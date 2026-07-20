@@ -22,7 +22,7 @@ telemetry what went wrong instead of hunting through dashboards.
 Under active build. Pieces land in scope order:
 
 1. ✅ Synthetic multi-line data generator with reproducible fault injection
-2. ⬜ ETL pipeline (one OTel span per stage) + OEE aggregation
+2. ✅ ETL pipeline (one OTel span per stage) + OEE aggregation
 3. ⬜ Export to SigNoz Cloud + hand-built dashboard
 4. ⬜ Q&A CLI (Euri primary, Grok fallback)
 5. ⬜ Demo video

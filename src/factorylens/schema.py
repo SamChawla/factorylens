@@ -38,6 +38,10 @@ NULLABLE_QUALITY_COLUMNS: list[str] = [TEMPERATURE]
 # The three production lines in the demo scenario.
 LINE_IDS: tuple[str, str, str] = ("line_1", "line_2", "line_3")
 
+# A batch is "stale" if its timestamp lags the line's newest reading by more
+# than this — i.e. a record that stopped updating while the line moved on.
+STALE_GAP = pd.Timedelta(hours=24)
+
 
 def malformed_mask(df: pd.DataFrame) -> pd.Series:
     """Boolean mask: True where a row is structurally invalid and must be dropped.
@@ -75,3 +79,31 @@ def malformed_mask(df: pd.DataFrame) -> pd.Series:
 
     mask = non_numeric | negative | good_gt_total | bad_planned | blank_id
     return mask.fillna(True)
+
+
+def null_ratio(df: pd.DataFrame) -> float:
+    """Fraction of null cells across the nullable quality columns.
+
+    This is the missing-reading signal (null ``temperature``), reported per
+    stage. Missing readings are kept, not dropped — so this is measured on the
+    rows that actually flow downstream.
+    """
+    if len(df) == 0:
+        return 0.0
+    cols = NULLABLE_QUALITY_COLUMNS
+    total_cells = len(df) * len(cols)
+    if total_cells == 0:
+        return 0.0
+    nulls = int(df[cols].isna().to_numpy().sum())
+    return nulls / total_cells
+
+
+def has_stale_batch(df: pd.DataFrame) -> bool:
+    """True if any batch's timestamp lags the line's newest one by > STALE_GAP."""
+    if len(df) == 0:
+        return False
+    ts = pd.to_datetime(df[TS], errors="coerce")
+    if ts.notna().sum() == 0:
+        return False
+    newest = ts.max()
+    return bool((ts < (newest - STALE_GAP)).any())
