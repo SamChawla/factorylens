@@ -1,0 +1,254 @@
+{
+  "title": "FactoryLens — Pipeline Health & Data Quality",
+  "description": "Manufacturing ETL pipeline observability. Three panels: pipeline stage duration, data-quality trend (dropped rows / null ratio) per line, and OEE per line. Built from OTel spans emitted by the FactoryLens pipeline (service: factorylens).",
+  "tags": ["factorylens", "manufacturing", "oee", "data-quality"],
+  "variables": {},
+  "layout": [
+    { "i": "panel-duration", "x": 0, "y": 0, "w": 12, "h": 4, "moved": false, "static": false },
+    { "i": "panel-dataquality", "x": 0, "y": 4, "w": 12, "h": 4, "moved": false, "static": false },
+    { "i": "panel-oee", "x": 0, "y": 8, "w": 12, "h": 4, "moved": false, "static": false }
+  ],
+  "widgets": [
+    {
+      "id": "panel-duration",
+      "title": "Pipeline stage duration (avg, per stage)",
+      "description": "Average duration of each pipeline stage over time. Toggle 'Stacked' in the panel to read total pipeline time. Stages: ingest, clean, transform, aggregate.",
+      "panelTypes": "graph",
+      "isStacked": true,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "ns",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "avg",
+              "aggregateAttribute": {
+                "key": "durationNano",
+                "dataType": "float64",
+                "type": "",
+                "isColumn": true,
+                "id": "durationNano--float64----true"
+              },
+              "timeAggregation": "avg",
+              "spaceAggregation": "avg",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-dur",
+                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-dur",
+                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "op": "in",
+                    "value": ["ingest", "clean", "transform", "aggregate"]
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" }
+              ],
+              "legend": "{{name}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-dataquality",
+      "title": "Data-quality trend — dropped rows & null ratio (per line)",
+      "description": "From the clean stage: rows_dropped (malformed rows removed) and null_ratio (missing readings that survived) over time, grouped by production line. A rising line here is the data-quality story behind a falling OEE.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "avg",
+              "aggregateAttribute": {
+                "key": "rows_dropped",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false,
+                "id": "rows_dropped--float64--tag--false"
+              },
+              "timeAggregation": "avg",
+              "spaceAggregation": "avg",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-dq1",
+                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-dq1",
+                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "op": "=",
+                    "value": "clean"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+              ],
+              "legend": "dropped {{line_id}}",
+              "reduceTo": "avg"
+            },
+            {
+              "dataSource": "traces",
+              "queryName": "B",
+              "aggregateOperator": "avg",
+              "aggregateAttribute": {
+                "key": "null_ratio",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false,
+                "id": "null_ratio--float64--tag--false"
+              },
+              "timeAggregation": "avg",
+              "spaceAggregation": "avg",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-dq2",
+                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-dq2",
+                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "op": "=",
+                    "value": "clean"
+                  }
+                ]
+              },
+              "expression": "B",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+              ],
+              "legend": "null_ratio {{line_id}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-oee",
+      "title": "OEE per line",
+      "description": "Overall Equipment Effectiveness (Availability x Performance x Quality) per production line, from the aggregate stage. This is the headline number; the panels above explain why a line's is low.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 1,
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "avg",
+              "aggregateAttribute": {
+                "key": "oee",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false,
+                "id": "oee--float64--tag--false"
+              },
+              "timeAggregation": "avg",
+              "spaceAggregation": "avg",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-oee",
+                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-oee",
+                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "op": "=",
+                    "value": "aggregate"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+              ],
+              "legend": "{{line_id}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    }
+  ]
+}
