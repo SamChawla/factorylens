@@ -40,8 +40,8 @@ class Telemetry:
     def tracer(self, name: str = "factorylens") -> Tracer:
         return self.provider.get_tracer(name)
 
-    def force_flush(self, timeout_millis: int = 5000) -> None:
-        self.provider.force_flush(timeout_millis)
+    def force_flush(self, timeout_millis: int = 5000) -> bool:
+        return self.provider.force_flush(timeout_millis)
 
     def shutdown(self) -> None:
         self.provider.shutdown()
