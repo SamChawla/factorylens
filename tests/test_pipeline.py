@@ -102,5 +102,8 @@ def test_clean_span_records_dropped_rows_for_the_malformed_line(telemetry):
         for s in telemetry.exporter.get_finished_spans()
         if s.name == "clean"
     }
-    assert clean_spans["line_3"].attributes["rows_dropped"] == round(0.12 * 24)
+    line_3 = next(l for l in DEMO_SCENARIO.lines if l.line_id == "line_3")
+    assert clean_spans["line_3"].attributes["rows_dropped"] == round(
+        line_3.faults.malformed_ratio * line_3.n_batches
+    )
     assert clean_spans["line_1"].attributes["rows_dropped"] == 0

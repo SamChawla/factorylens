@@ -38,9 +38,11 @@ NULLABLE_QUALITY_COLUMNS: list[str] = [TEMPERATURE]
 # The three production lines in the demo scenario.
 LINE_IDS: tuple[str, str, str] = ("line_1", "line_2", "line_3")
 
-# A batch is "stale" if its timestamp lags the line's newest reading by more
-# than this — i.e. a record that stopped updating while the line moved on.
-STALE_GAP = pd.Timedelta(hours=24)
+# A batch is "stale" when it falls out of the line's own cadence: the gap
+# between it and the next record is this many times the line's typical spacing.
+# Defined relative to the data's rhythm rather than as an absolute age, so it
+# stays correct whether a line reports 24 batches or 24,000.
+STALE_GAP_FACTOR = 5.0
 
 
 def malformed_mask(df: pd.DataFrame) -> pd.Series:
@@ -99,11 +101,19 @@ def null_ratio(df: pd.DataFrame) -> float:
 
 
 def has_stale_batch(df: pd.DataFrame) -> bool:
-    """True if any batch's timestamp lags the line's newest one by > STALE_GAP."""
-    if len(df) == 0:
+    """True if any batch fell out of the line's reporting cadence.
+
+    Compares the largest gap between consecutive timestamps against the typical
+    (median) gap. A batch that stopped updating leaves an outlier-sized hole;
+    a line reporting on schedule has uniform gaps, however long it has run.
+    """
+    if len(df) < 3:  # too few points to establish a cadence
         return False
-    ts = pd.to_datetime(df[TS], errors="coerce")
-    if ts.notna().sum() == 0:
+    ts = pd.to_datetime(df[TS], errors="coerce").dropna().sort_values()
+    if len(ts) < 3:
         return False
-    newest = ts.max()
-    return bool((ts < (newest - STALE_GAP)).any())
+    gaps = ts.diff().dropna()
+    typical = gaps.median()
+    if typical <= pd.Timedelta(0):
+        return False
+    return bool(gaps.max() > STALE_GAP_FACTOR * typical)

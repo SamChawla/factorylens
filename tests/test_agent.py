@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 
 from factorylens import agent
+from factorylens.generator import DEMO_SCENARIO
 from factorylens.telemetry import setup_telemetry
 
 
@@ -34,10 +35,20 @@ def test_snapshot_has_one_entry_per_line(source):
 def test_snapshot_carries_the_data_quality_facts(source):
     snap = source.snapshot(runs=1)
     facts = {f.line_id: f for f in snap.latest}
-    # The demo scenario's scripted faults must show up as real numbers.
-    assert facts["line_3"].rows_dropped == 3
+    # Expectations derive from the scenario, so resizing the demo data doesn't
+    # invalidate the test — only a real behaviour change does.
+    spec = {l.line_id: l for l in DEMO_SCENARIO.lines}
+
+    line_3 = spec["line_3"]
+    assert facts["line_3"].rows_dropped == round(
+        line_3.faults.malformed_ratio * line_3.n_batches
+    )
     assert facts["line_3"].stale_batch is True
-    assert facts["line_2"].null_ratio == pytest.approx(0.1667, abs=1e-3)
+
+    line_2 = spec["line_2"]  # no malformed rows, so every batch survives cleaning
+    assert facts["line_2"].null_ratio == pytest.approx(
+        line_2.faults.missing_reading_ratio, abs=1e-3
+    )
     assert facts["line_1"].rows_dropped == 0
     assert facts["line_1"].stale_batch is False
 

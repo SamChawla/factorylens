@@ -22,6 +22,12 @@ import pandas as pd
 from factorylens import schema
 
 
+# Batches each line reports per pipeline run. Sized so the pipeline processes a
+# realistic volume: stage durations land well clear of OS clock granularity, so
+# the SigNoz duration panel shows real work rather than timer noise.
+BATCHES_PER_LINE = 2000
+
+
 @dataclass(frozen=True)
 class FaultSpec:
     """Which faults to inject into a line, and how much.
@@ -197,13 +203,13 @@ DEMO_SCENARIO = Scenario(
     lines=[
         LineSpec(
             line_id="line_1",
-            n_batches=24,
+            n_batches=BATCHES_PER_LINE,
             ideal_cycle_s=2.0,
             temp_mean=68.0,
         ),
         LineSpec(
             line_id="line_2",
-            n_batches=24,
+            n_batches=BATCHES_PER_LINE,
             faults=FaultSpec(missing_reading_ratio=0.15),
             ideal_cycle_s=2.5,
             downtime_mean=8.0,
@@ -211,7 +217,7 @@ DEMO_SCENARIO = Scenario(
         ),
         LineSpec(
             line_id="line_3",
-            n_batches=24,
+            n_batches=BATCHES_PER_LINE,
             faults=FaultSpec(malformed_ratio=0.12, stale_batch=True),
             ideal_cycle_s=3.0,
             downtime_mean=14.0,
@@ -251,7 +257,7 @@ def degrading_scenario(
         raise ValueError("total_runs must be >= 1")
     t = min(max(run_index / (total_runs - 1), 0.0), 1.0) if total_runs > 1 else 0.0
 
-    n_batches = 24
+    n_batches = BATCHES_PER_LINE
     # Advance each run's data window so batch timestamps stay continuous.
     start = (
         pd.Timestamp(base.start)
