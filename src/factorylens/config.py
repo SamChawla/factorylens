@@ -18,11 +18,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- SigNoz Cloud / OTLP ---
+    # --- SigNoz Cloud / OTLP (telemetry ingest) ---
     signoz_otlp_endpoint: str = "https://ingest.us.signoz.cloud:443"
     signoz_ingestion_key: str = ""
     otel_service_name: str = "factorylens"
     telemetry_enabled: bool = True
+
+    # --- SigNoz Cloud management API (dashboards) ---
+    # Separate credential from the ingestion key: that one is write-only for
+    # telemetry and cannot create dashboards. The app URL is the host in the
+    # browser address bar, which differs from the "ingest." host.
+    signoz_app_url: str = ""
+    signoz_api_key: str = ""
 
     # --- LLM: Euri (primary) ---
     euri_api_key: str = ""
@@ -38,7 +45,13 @@ class Settings(BaseSettings):
 
     @property
     def signoz_configured(self) -> bool:
+        """Can we push telemetry?"""
         return bool(self.signoz_ingestion_key)
+
+    @property
+    def signoz_api_configured(self) -> bool:
+        """Can we drive the management API (create dashboards)?"""
+        return bool(self.signoz_api_key and self.signoz_app_url)
 
 
 @lru_cache
