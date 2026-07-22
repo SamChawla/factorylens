@@ -29,10 +29,12 @@ class Settings(BaseSettings):
     euri_base_url: str = "https://api.euron.one/v1"
     euri_model: str = "gpt-4o-mini"
 
-    # --- LLM: Grok (fallback) ---
-    grok_api_key: str = ""
-    grok_base_url: str = "https://api.x.ai/v1"
-    grok_model: str = "grok-2-latest"
+    # --- LLM: Groq (fallback) ---
+    # Groq (groq.com), not Grok (x.ai). Both are OpenAI-compatible,
+    # so swapping providers is an env-var change, not a code change.
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "llama-3.3-70b-versatile"
 
     @property
     def signoz_configured(self) -> bool:
