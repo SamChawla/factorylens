@@ -14,6 +14,7 @@ to see per-stage logs).
 from __future__ import annotations
 
 import logging
+import time
 
 import typer
 from rich.console import Console
@@ -21,7 +22,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from factorylens.config import get_settings
-from factorylens.generator import DEMO_SCENARIO, generate
+from factorylens.generator import DEMO_SCENARIO, degrading_scenario, generate
 from factorylens.logging import configure_logging
 from factorylens.oee import OEEResult
 from factorylens.pipeline import run_pipeline
@@ -67,23 +68,58 @@ def _oee_table(results: dict[str, OEEResult]) -> Table:
 
 @app.command()
 def run(
+    runs: int = typer.Option(
+        1, "--runs", "-n", min=1,
+        help="Number of pipeline runs. >1 seeds a trend with line_3 degrading.",
+    ),
+    interval: float = typer.Option(
+        30.0, "--interval", "-i", min=0.0,
+        help="Seconds between runs. Spread runs out so trend panels show a curve.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-stage logs."),
 ) -> None:
-    """Generate the demo dataset, run the pipeline, and export the spans."""
+    """Generate the demo dataset, run the pipeline, and export the spans.
+
+    A single run uses the fixed demo scenario. Multiple runs walk the degrading
+    scenario, so the SigNoz trend panels show data quality falling on line_3 and
+    its OEE falling with it.
+    """
     _init_logging(verbose)
     settings = get_settings()
     telemetry = setup_telemetry(settings)
+    first: dict[str, OEEResult] = {}
+    results: dict[str, OEEResult] = {}
     try:
-        raw = generate(DEMO_SCENARIO)
-        results = run_pipeline(raw, telemetry)
-        telemetry.force_flush()
+        for i in range(runs):
+            scenario = DEMO_SCENARIO if runs == 1 else degrading_scenario(i, runs)
+            results = run_pipeline(generate(scenario), telemetry)
+            telemetry.force_flush()
+            if i == 0:
+                first = results
+            if runs > 1:
+                console.print(
+                    f"run {i + 1}/{runs}  "
+                    + "  ".join(
+                        f"{lid} OEE [{_oee_color(results[lid].oee)}]{results[lid].oee:.2f}"
+                        f"[/{_oee_color(results[lid].oee)}]"
+                        for lid in sorted(results)
+                    )
+                )
+            if interval > 0 and i < runs - 1:
+                time.sleep(interval)
     finally:
         telemetry.shutdown()
 
     console.print(_oee_table(results))
+    if runs > 1:
+        drift = results["line_3"].oee - first["line_3"].oee
+        console.print(
+            f"line_3 OEE moved [bold]{first['line_3'].oee:.2f} -> "
+            f"{results['line_3'].oee:.2f}[/bold] ({drift:+.2f}) across {runs} runs."
+        )
     if telemetry.exporting_to_signoz:
         console.print(
-            f"[green]Exported {len(results) * 5} spans to SigNoz[/green] "
+            f"[green]Exported {runs * len(results) * 5} spans to SigNoz[/green] "
             f"(service '{settings.otel_service_name}' at {settings.signoz_otlp_endpoint})."
         )
     else:

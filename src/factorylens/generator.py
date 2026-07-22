@@ -146,7 +146,14 @@ def _inject_faults(rows: list[dict], spec: LineSpec, scenario: Scenario,
     k_missing = round(spec.faults.missing_reading_ratio * n)
 
     all_idx = np.arange(n)
-    malformed_idx = rng.choice(all_idx, size=min(k_malformed, n), replace=False)
+    # A scripted stale batch lives on the last row. Keep that row out of the
+    # malformed pool: if cleaning dropped it as malformed, it would also drop
+    # the staleness signal, and stale_batch would flicker between runs for no
+    # reason the data can explain.
+    malformed_pool = all_idx[:-1] if (spec.faults.stale_batch and n > 1) else all_idx
+    malformed_idx = rng.choice(
+        malformed_pool, size=min(k_malformed, len(malformed_pool)), replace=False
+    )
     remaining = np.setdiff1d(all_idx, malformed_idx)
     missing_idx = rng.choice(
         remaining, size=min(k_missing, len(remaining)), replace=False
@@ -219,3 +226,68 @@ DEMO_SCENARIO = Scenario(
     interval_min=60,
     stale_age_min=1440,
 )
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def degrading_scenario(
+    run_index: int, total_runs: int, base: Scenario = DEMO_SCENARIO
+) -> Scenario:
+    """Scenario for run ``run_index`` of ``total_runs``, with line_3 degrading.
+
+    Used to seed a visible trend across repeated pipeline runs: line_1 stays
+    healthy and line_2 keeps its steady data gaps, while line_3's data quality
+    and equipment health decay run-over-run — more malformed rows and missing
+    readings, more downtime, slower and sloppier output, and a stale batch from
+    the halfway point. The result is the demo's causal story: data quality falls,
+    then OEE falls, and the spans say exactly why.
+
+    Still deterministic: the seed is derived from the run index, so
+    run N of a 12-run seeding is always identical.
+    """
+    if total_runs < 1:
+        raise ValueError("total_runs must be >= 1")
+    t = min(max(run_index / (total_runs - 1), 0.0), 1.0) if total_runs > 1 else 0.0
+
+    n_batches = 24
+    # Advance each run's data window so batch timestamps stay continuous.
+    start = (
+        pd.Timestamp(base.start)
+        + pd.Timedelta(minutes=run_index * n_batches * base.interval_min)
+    ).isoformat()
+
+    lines = [
+        LineSpec(line_id="line_1", n_batches=n_batches, ideal_cycle_s=2.0, temp_mean=68.0),
+        LineSpec(
+            line_id="line_2",
+            n_batches=n_batches,
+            faults=FaultSpec(missing_reading_ratio=0.15),
+            ideal_cycle_s=2.5,
+            downtime_mean=8.0,
+            temp_mean=74.0,
+        ),
+        LineSpec(
+            line_id="line_3",
+            n_batches=n_batches,
+            faults=FaultSpec(
+                malformed_ratio=_lerp(0.04, 0.25, t),
+                missing_reading_ratio=_lerp(0.0, 0.20, t),
+                stale_batch=t >= 0.5,
+            ),
+            ideal_cycle_s=3.0,
+            downtime_mean=_lerp(8.0, 20.0, t),
+            performance_mean=_lerp(0.88, 0.72, t),
+            quality_mean=_lerp(0.96, 0.88, t),
+            temp_mean=_lerp(74.0, 86.0, t),
+            temp_sd=2.5,
+        ),
+    ]
+    return Scenario(
+        lines=lines,
+        seed=base.seed + run_index * 1000,
+        start=start,
+        interval_min=base.interval_min,
+        stale_age_min=base.stale_age_min,
+    )

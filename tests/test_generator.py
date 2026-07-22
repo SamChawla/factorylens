@@ -15,6 +15,7 @@ from factorylens.generator import (
     FaultSpec,
     LineSpec,
     Scenario,
+    degrading_scenario,
     generate,
 )
 
@@ -87,6 +88,64 @@ def test_stale_batch_produces_an_old_timestamp():
     fresh = generate(_scenario(FaultSpec(stale_batch=False)))
     assert pd.to_datetime(stale[schema.TS]).min() < start
     assert pd.to_datetime(fresh[schema.TS]).min() >= start
+
+
+def test_stale_batch_survives_cleaning_even_with_heavy_malformed_injection():
+    # Regression: the stale row must never be chosen as a malformed row, or
+    # cleaning drops it and the stale_batch signal vanishes at random.
+    df = generate(
+        _scenario(FaultSpec(malformed_ratio=0.5, stale_batch=True), n_batches=20)
+    )
+    surviving = df[~schema.malformed_mask(df)]
+    assert schema.has_stale_batch(surviving), "stale signal lost during cleaning"
+
+
+@pytest.mark.parametrize("run_index", range(8))
+def test_degrading_scenario_keeps_stale_visible_after_cleaning(run_index):
+    scenario = degrading_scenario(run_index, 8)
+    line_3 = next(l for l in scenario.lines if l.line_id == "line_3")
+    df = generate(scenario)
+    line_3_rows = df[df[schema.LINE_ID] == "line_3"]
+    surviving = line_3_rows[~schema.malformed_mask(line_3_rows)]
+    # Whatever the generator scripted is what the clean stage should report.
+    assert schema.has_stale_batch(surviving) == line_3.faults.stale_batch
+
+
+def test_degrading_scenario_worsens_line_3_monotonically():
+    total = 8
+    faults = [
+        next(l for l in degrading_scenario(i, total).lines if l.line_id == "line_3").faults
+        for i in range(total)
+    ]
+    malformed = [f.malformed_ratio for f in faults]
+    missing = [f.missing_reading_ratio for f in faults]
+    assert malformed == sorted(malformed) and malformed[-1] > malformed[0]
+    assert missing == sorted(missing) and missing[-1] > missing[0]
+    # A batch goes stale from the halfway point onward, and stays stale.
+    assert not faults[0].stale_batch
+    assert faults[-1].stale_batch
+
+
+def test_degrading_scenario_leaves_reference_lines_alone():
+    first = degrading_scenario(0, 6)
+    last = degrading_scenario(5, 6)
+    for line_id in ("line_1", "line_2"):
+        a = next(l for l in first.lines if l.line_id == line_id)
+        b = next(l for l in last.lines if l.line_id == line_id)
+        assert a.faults == b.faults  # only line_3 degrades
+
+
+def test_degrading_scenario_is_deterministic():
+    a = generate(degrading_scenario(3, 10))
+    b = generate(degrading_scenario(3, 10))
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_degrading_scenario_single_run_is_the_healthy_baseline():
+    only = degrading_scenario(0, 1)
+    line_3 = next(l for l in only.lines if l.line_id == "line_3")
+    assert not line_3.faults.stale_batch
+    assert line_3.faults.malformed_ratio < 0.1
 
 
 def test_demo_scenario_is_reproducible_and_covers_every_fault():
