@@ -56,6 +56,7 @@ def setup_telemetry(
     settings: Settings | None = None,
     *,
     exporter: SpanExporter | None = None,
+    capture: SpanExporter | None = None,
 ) -> Telemetry:
     """Build a tracer provider.
 
@@ -63,10 +64,16 @@ def setup_telemetry(
       the instant they end, so assertions see them without flushing races).
     - telemetry enabled + SigNoz configured: OTLP/HTTP → SigNoz, batched.
     - otherwise: ConsoleSpanExporter, so runs still produce visible spans.
+
+    ``capture`` adds a second exporter *alongside* the primary one. The Q&A agent
+    uses this to read the very same spans that were shipped to SigNoz, rather
+    than a parallel code path that could quietly drift from what was exported.
     """
     settings = settings or get_settings()
     resource = Resource.create({"service.name": settings.otel_service_name})
     provider = TracerProvider(resource=resource)
+    if capture is not None:
+        provider.add_span_processor(SimpleSpanProcessor(capture))
 
     if exporter is not None:
         provider.add_span_processor(SimpleSpanProcessor(exporter))

@@ -17,11 +17,16 @@ import logging
 import time
 
 import typer
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from factorylens import agent
 from factorylens.config import get_settings
+from factorylens.exceptions import LLMProviderError
 from factorylens.generator import DEMO_SCENARIO, degrading_scenario, generate
 from factorylens.logging import configure_logging
 from factorylens.oee import OEEResult
@@ -127,6 +132,49 @@ def run(
             "[yellow]SigNoz not configured[/yellow] - spans went to the console. "
             "Run [bold]factorylens check[/bold] after setting SIGNOZ_INGESTION_KEY in .env."
         )
+
+
+@app.command()
+def ask(
+    question: str = typer.Argument(..., help="e.g. \"why is line_3's OEE low?\""),
+    runs: int = typer.Option(
+        1, "--runs", "-n", min=1,
+        help="Pipeline runs to gather before answering. >1 lets the agent see a trend.",
+    ),
+    show_context: bool = typer.Option(
+        False, "--show-context", help="Print the telemetry handed to the model."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-stage logs."),
+) -> None:
+    """Ask a question about the pipeline; answered from its OTel spans."""
+    _init_logging(verbose)
+    settings = get_settings()
+    capture = InMemorySpanExporter()
+    telemetry = setup_telemetry(settings, capture=capture)
+    try:
+        source = agent.LocalPipelineSource(telemetry=telemetry, capture=capture)
+        with console.status("Running pipeline and collecting telemetry..."):
+            snapshot = source.snapshot(runs=runs)
+        if show_context:
+            console.print(
+                Panel(agent.format_context(snapshot), title="Telemetry given to the model",
+                      border_style="blue")
+            )
+        with console.status("Asking..."):
+            try:
+                reply = agent.answer(
+                    question, snapshot, settings=settings, tracer=telemetry.tracer()
+                )
+            except LLMProviderError as e:
+                console.print(
+                    Panel(str(e), title="[red]No answer[/red]", border_style="red")
+                )
+                raise typer.Exit(code=1) from e
+        telemetry.force_flush()
+    finally:
+        telemetry.shutdown()
+
+    console.print(Panel(reply, title=f"[green]{question}[/green]", border_style="green"))
 
 
 @app.command()
