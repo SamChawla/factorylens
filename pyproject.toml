@@ -29,6 +29,7 @@ industrial = [
 dev = [
     "playwright>=1.61.0",
     "pytest>=8.3",
+    "pytest-cov>=7.1.0",
     "pytest-playwright>=0.8.0",
 ]
 
@@ -42,3 +43,15 @@ packages = ["src/factorylens"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["factorylens"]
+# Nothing is omitted, including the CLI — the reported number should be the one
+# anyone gets by running the suite, not a flattering subset.
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pragma: no cover",
+]

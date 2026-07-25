@@ -129,7 +129,9 @@ class _Server:
 
     def start(self):
         self._thread.start()
-        assert self._ready.wait(30), "OPC UA server did not start"
+        # Generous: under `pytest --cov` every asyncua line is traced, which slows
+        # server startup by an order of magnitude. Returns as soon as it is ready.
+        assert self._ready.wait(180), "OPC UA server did not start"
 
     def stop(self):
         self._stop.set()

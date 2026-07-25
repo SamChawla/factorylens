@@ -3,6 +3,18 @@
 **Ask your factory's telemetry why a number is wrong — and get an answer that
 cites the data.**
 
+![Tests](https://img.shields.io/badge/tests-155-brightgreen?logo=pytest&logoColor=white)
+![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces%20·%20metrics%20·%20logs-425CC7?logo=opentelemetry&logoColor=white)
+![SigNoz](https://img.shields.io/badge/SigNoz-self--hosted-E75536)
+
+![Docker](https://img.shields.io/badge/Docker%20Compose-Foundry-2496ED?logo=docker&logoColor=white)
+![OPC UA](https://img.shields.io/badge/OPC%20UA-asyncua-0A6E7C)
+![MQTT](https://img.shields.io/badge/MQTT-Sparkplug%20B-660066?logo=mqtt&logoColor=white)
+![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)
+![uv](https://img.shields.io/badge/uv-locked-DE5FE9?logo=uv&logoColor=white)
+
 Manufacturing pipeline health & data-quality observability, instrumented with
 OpenTelemetry and shipped to **self-hosted SigNoz** (Foundry / Docker Compose;
 SigNoz Cloud works identically). Built for the *Agents of SigNoz* hackathon
@@ -348,10 +360,25 @@ loop.
 
 ## Stack
 
-Python 3.12 · pandas · OpenTelemetry SDK (traces, metrics, logs over OTLP/HTTP) ·
-SigNoz (self-hosted via Foundry / Docker Compose; Cloud also supported) ·
-OPC UA (asyncua) + MQTT (paho) · Typer + Rich ·
-structlog · pydantic-settings · pytest · Playwright · uv
+| Layer | Choice | Why |
+|-------|--------|-----|
+| **Language** | Python 3.12 | fluent, and nothing in the scoring rewards a language choice |
+| **Data** | pandas | stages are `DataFrame -> DataFrame`; volumes nowhere near needing Spark |
+| **Telemetry** | OpenTelemetry SDK — traces, metrics, logs over OTLP/HTTP | HTTP/443 avoids gRPC and proxy friction on Windows and locked-down networks |
+| **Backend** | SigNoz — self-hosted via Foundry / Docker Compose (Cloud also supported) | reproducible from `casting.yaml`; endpoint and auth are env-only, so neither target is special-cased |
+| **Industrial** | OPC UA (`asyncua`) · MQTT Sparkplug (`paho`) | optional extra; the real protocols behind the demo's mock feed |
+| **LLM** | Euri primary → Groq fallback | both OpenAI-compatible, so a third provider is a list entry, not a refactor |
+| **CLI** | Typer + Rich | labelled, colour-coded output; never bare `print()` |
+| **Config / logs** | pydantic-settings · structlog | typed config from env only; log fields are the same fields on the span |
+| **Testing** | pytest · pytest-cov · Playwright | 155 tests, incl. a real OPC UA server and a real browser |
+| **Packaging** | uv, lockfile committed | `uv sync` reproduces the exact environment on demo day |
+
+Reproduce the numbers in the badges:
+
+```bash
+uv sync --extra industrial
+uv run pytest --cov=factorylens        # 155 tests · 85% coverage
+```
 
 ## AI assistance disclosure
 
