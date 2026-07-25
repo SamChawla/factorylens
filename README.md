@@ -4,9 +4,12 @@
 cites the data.**
 
 Manufacturing pipeline health & data-quality observability, instrumented with
-OpenTelemetry and shipped to **SigNoz Cloud**. Built for the *Agents of SigNoz*
+OpenTelemetry and shipped to **SigNoz** (Cloud or self-hosted). Built for the *Agents of SigNoz*
 hackathon (WeMakeDevs × SigNoz, Jul 20–26 2026) — **Track 01: AI & Agent
 Observability**.
+
+📄 **Overview page:** [`docs/index.html`](docs/index.html) — a one-page visual
+walkthrough of the whole system (open locally, or enable GitHub Pages to serve it).
 
 ---
 
@@ -41,7 +44,7 @@ pipeline_run (line_id)
 └── aggregate   + availability, performance, quality, oee
 ```
 
-Those spans go to SigNoz, where three panels show pipeline duration, data-quality
+Those spans go to SigNoz, where seven panels show pipeline duration, data-quality
 trend, and OEE per line. Then a **Q&A agent reads the same spans** and answers in
 plain language:
 
@@ -72,10 +75,13 @@ SigNoz how long the agent took and which provider answered.
 
 ## Quickstart
 
+Full step-by-step setup, expected output and troubleshooting:
+**[docs/getting-started.md](docs/getting-started.md)**.
+
 ```bash
 uv sync                      # reproducible env from the committed lockfile
 cp .env.example .env         # then fill in your keys (.env is gitignored)
-uv run pytest                # 59 tests
+uv run pytest                # 140 tests (8 UI tests skip without SigNoz)
 ```
 
 Minimum config to run against SigNoz Cloud:
@@ -88,6 +94,15 @@ GROQ_API_KEY=<fallback LLM>
 ```
 
 No SigNoz account? Everything still runs — spans print to the console instead.
+
+**Self-hosted SigNoz** (Docker Compose via Foundry) is a first-class target too —
+same code, only three env vars differ. Reproducible-deployment spec is
+[`casting.yaml`](casting.yaml); full walkthrough in
+[docs/self-hosted.md](docs/self-hosted.md).
+
+**Five OTel signals, not three.** Traces, metrics, **logs** (the structlog stream
+bridged to OTel), a 7-panel **dashboard**, and two **alert rules**
+([`alerts/`](alerts/)) — OEE-below-floor and line-went-silent, both created live.
 
 ### Commands
 
@@ -105,13 +120,65 @@ uv run factorylens run --runs 12 --interval 30
 uv run factorylens ask "why is line_3's OEE low?"
 uv run factorylens ask "is line_3 getting worse?" --runs 6
 uv run factorylens ask "..." --show-context     # see exactly what the model got
+
+# 5. Consume a live sensor feed instead of a finished dataset
+uv run factorylens stream --duration 30
+uv run factorylens stream --duration 60 --window 4 --time-scale 20000
 ```
+
+### Where the data comes from
+
+There are no sensors — the feed is simulated. But it is simulated *as a feed*,
+not as a finished file, and that distinction is the point.
+
+`factorylens run` uses a seeded generator that produces the entire dataset up
+front. `factorylens stream` puts a `SensorSource` in front of the pipeline: a
+mock PLC emits batches one at a time, each stamped with when the line says it
+happened and when we actually received it. Readings are buffered into tumbling
+8-hour event-time windows, and every closed window runs through the **same,
+unchanged** pipeline — so the spans, the dashboards and the Q&A agent all work
+exactly as before.
+
+Swapping the mock for a real plant means one new class implementing
+`subscribe() -> Iterator[Reading]` on top of OPC UA, MQTT Sparkplug, or an MES
+export. Nothing downstream changes — the protocol is an ``Iterator`` precisely
+because that is the shape both a simulator and a real queue-draining client
+already have.
+
+What streaming adds that a finished dataset structurally cannot:
+
+| signal | what it catches |
+|--------|-----------------|
+| `ingest.lag_ms` | a line producing fine while its gateway falls further behind |
+| `line_silent` alert | a line that **stopped** reporting — triggered by absence, on a wall-clock timer |
+| `threshold_breach` alert | a hot reading, the moment it arrives, without waiting for the window |
+| `malformed_reading` alert | a bad row rejected at the door rather than discovered in `clean` |
+
+Staleness is modelled as the line going quiet, not as a frozen timestamp — so
+the gap it leaves is real, and `schema.has_stale_batch` detects it with no
+change to that function at all.
+
+`run` is still the deterministic, offline path, and it stays: it is what the
+tests pin and the fallback if a live demo goes wrong.
+
+### The agent's own LLM calls are instrumented too
+
+`llm_ask` spans carry the OpenTelemetry **GenAI semantic conventions** —
+`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`,
+`gen_ai.usage.output_tokens` — plus `gen_ai.client.token.usage` and
+`gen_ai.client.operation.duration` metrics. So "what did that answer cost, and
+did the fallback fire?" is a dashboard query, not a guess.
+
+These are emitted directly rather than via a vendor instrumentation library:
+both providers are reached over the same OpenAI-compatible HTTP shape, so a
+Groq-specific instrumentor (which patches the Groq SDK) would see neither.
 
 ### Dashboard
 
 Import [`dashboards/factorylens-dashboard.json`](dashboards/factorylens-dashboard.json)
-via **Dashboards → New Dashboard → Import JSON**. Three panels, named in plain
-English: pipeline stage duration, data-quality trend per line, OEE per line.
+via **Dashboards → New Dashboard → Import JSON**. Seven panels: pipeline stage
+duration, data-quality trend per line, OEE per line, LLM token usage and p95
+latency and fallback rate per provider, and streaming alerts by kind.
 Import *after* a run, so SigNoz has learned the attribute types. Details and a
 manual-build fallback: [`dashboards/README.md`](dashboards/README.md).
 
@@ -142,9 +209,7 @@ with 240 rows dropped. The 12-run seeding is what produces the trend above.)*
 
 ## Design
 
-Decisions and their rationale live in [`.cursor/adr.md`](.cursor/adr.md); the
-build plan in [`.cursor/implementation-plan.md`](.cursor/implementation-plan.md).
-Highlights:
+The load-bearing decisions and why they were made:
 
 - **One span per stage, fixed attribute set** — span names stay generic and
   stable; the *data on the span* tells the story. Dashboards and the agent both
@@ -163,29 +228,49 @@ Highlights:
 
 ### Tested
 
-59 tests, no network calls. Both LLM providers are mocked; the fallback path is
-covered because it only ever runs when the primary is already failing — which is
-precisely when nobody is watching.
+140 tests, no network calls in the default run. Both LLM providers are mocked —
+the fallback path is covered because it only ever runs when the primary is
+already failing, which is precisely when nobody is watching.
 
 | file | covers |
 |------|--------|
 | `tests/test_generator.py` | fault injection at exact counts, determinism, degradation |
 | `tests/test_oee.py` | OEE math incl. degenerate batches (no run time, no output) |
 | `tests/test_pipeline.py` | each stage on clean + deliberately-broken input, span contract |
-| `tests/test_llm.py` | provider fallback: 5xx, rate limit, network, malformed, empty |
+| `tests/test_llm.py` | provider fallback (5xx, rate limit, network, malformed, empty) + GenAI attributes |
 | `tests/test_agent.py` | span attributes survive intact into the model's context |
+| `tests/test_sources.py` | the sensor feed: determinism, lag, silence, fault rates |
+| `tests/test_stream.py` | windowing, watermarks, lateness, the silence watchdog, alerts |
+| `tests/test_telemetry.py` | Cloud vs self-hosted export gating, keyless auth, the logs bridge |
+| `tests/test_e2e_dashboard.py` | real browser: panels render with data, alert rules listed |
+
+The 8 UI tests drive a real browser against a running SigNoz and **skip
+automatically** when one isn't reachable, so a bare `uv run pytest` is 132
+passed / 8 skipped. With SigNoz up and `SIGNOZ_UI_PASSWORD` set, all 140 run.
 
 ## Honest limitations
 
 - The agent analyses a pipeline run it triggers itself, reading spans captured
-  in-process. Querying historical telemetry from SigNoz's API is designed for
-  (the `TelemetrySource` protocol) but not shipped — it needs a management API
-  key that could not be provisioned during the build.
-- Dashboard creation is a JSON import rather than an API call, for the same reason.
+  in-process. Querying *historical* telemetry from SigNoz's API is designed for
+  (the `TelemetrySource` protocol) but not shipped — so it cannot answer about
+  runs it did not trigger.
 - Manufacturing data is synthetic. The faults are modelled on real failure modes
   (dead sensors, malformed rows, frozen batches), but no real plant data was used.
 
 ## Stack
 
-Python 3.12 · pandas · OpenTelemetry SDK (OTLP/HTTP) · SigNoz Cloud ·
-Typer + Rich · structlog · pydantic-settings · pytest · uv
+Python 3.12 · pandas · OpenTelemetry SDK (traces, metrics, logs over OTLP/HTTP) ·
+SigNoz (Cloud + self-hosted via Foundry / Docker Compose) · Typer + Rich ·
+structlog · pydantic-settings · pytest · Playwright · uv
+
+## AI assistance disclosure
+
+This project was built with AI assistance, using **Claude Code** (Anthropic) as a
+pair-programming tool throughout: scaffolding modules, drafting tests and
+documentation, and working through debugging sessions.
+
+Every architectural decision, the scope, and the problem framing are the author's
+own. All AI-generated code was reviewed, and the behaviour it claims is verified
+by the test suite and by live runs against a real SigNoz instance — the numbers
+quoted in this README (OEE 0.80 / 0.76 / 0.58, 240 dropped rows, token counts)
+come from actual runs, not from the model's description of them.

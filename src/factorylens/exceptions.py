@@ -2,7 +2,7 @@
 
 Small and specific on purpose: the CLI can print a meaningful message and the
 agent can branch on failure kind, without any layer resorting to a bare
-``except Exception``. See the coding standards.
+``except Exception``.
 """
 
 

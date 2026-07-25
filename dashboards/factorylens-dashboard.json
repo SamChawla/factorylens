@@ -1,12 +1,77 @@
 {
-  "title": "FactoryLens — Pipeline Health & Data Quality",
-  "description": "Manufacturing ETL pipeline observability. Three panels: pipeline stage duration, data-quality trend (dropped rows / null ratio) per line, and OEE per line. Built from OTel spans emitted by the FactoryLens pipeline (service: factorylens).",
-  "tags": ["factorylens", "manufacturing", "oee", "data-quality"],
+  "title": "FactoryLens - Pipeline Health & Data Quality",
+  "description": "Manufacturing ETL pipeline observability. Seven panels: pipeline stage duration, data-quality trend (dropped rows / null ratio) per line, OEE per line, LLM token usage / latency / fallback rate per provider, and streaming alerts by kind. Built from OTel spans emitted by the FactoryLens pipeline (service: factorylens).",
+  "tags": [
+    "factorylens",
+    "manufacturing",
+    "oee",
+    "data-quality"
+  ],
   "variables": {},
   "layout": [
-    { "i": "panel-duration", "x": 0, "y": 0, "w": 12, "h": 4, "moved": false, "static": false },
-    { "i": "panel-dataquality", "x": 0, "y": 4, "w": 12, "h": 4, "moved": false, "static": false },
-    { "i": "panel-oee", "x": 0, "y": 8, "w": 12, "h": 4, "moved": false, "static": false }
+    {
+      "i": "panel-duration",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-dataquality",
+      "x": 0,
+      "y": 4,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-oee",
+      "x": 0,
+      "y": 8,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-llm-tokens",
+      "x": 0,
+      "y": 12,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-llm-latency",
+      "x": 0,
+      "y": 16,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-llm-calls",
+      "x": 0,
+      "y": 20,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    },
+    {
+      "i": "panel-stream-alerts",
+      "x": 0,
+      "y": 24,
+      "w": 12,
+      "h": 4,
+      "moved": false,
+      "static": false
+    }
   ],
   "widgets": [
     {
@@ -46,15 +111,32 @@
                 "items": [
                   {
                     "id": "f-svc-dur",
-                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
                     "op": "=",
                     "value": "factorylens"
                   },
                   {
                     "id": "f-name-dur",
-                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
                     "op": "in",
-                    "value": ["ingest", "clean", "transform", "aggregate"]
+                    "value": [
+                      "ingest",
+                      "clean",
+                      "transform",
+                      "aggregate"
+                    ]
                   }
                 ]
               },
@@ -65,7 +147,13 @@
               "limit": null,
               "orderBy": [],
               "groupBy": [
-                { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" }
+                {
+                  "key": "name",
+                  "dataType": "string",
+                  "type": "",
+                  "isColumn": true,
+                  "id": "name--string----true"
+                }
               ],
               "legend": "{{name}}",
               "reduceTo": "avg"
@@ -77,7 +165,7 @@
     },
     {
       "id": "panel-dataquality",
-      "title": "Data-quality trend — dropped rows & null ratio (per line)",
+      "title": "Data-quality trend - dropped rows & null ratio (per line)",
       "description": "From the clean stage: rows_dropped (malformed rows removed) and null_ratio (missing readings that survived) over time, grouped by production line. A rising line here is the data-quality story behind a falling OEE.",
       "panelTypes": "graph",
       "isStacked": false,
@@ -112,13 +200,25 @@
                 "items": [
                   {
                     "id": "f-svc-dq1",
-                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
                     "op": "=",
                     "value": "factorylens"
                   },
                   {
                     "id": "f-name-dq1",
-                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
                     "op": "=",
                     "value": "clean"
                   }
@@ -131,7 +231,13 @@
               "limit": null,
               "orderBy": [],
               "groupBy": [
-                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+                {
+                  "key": "line_id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "line_id--string--tag--false"
+                }
               ],
               "legend": "dropped {{line_id}}",
               "reduceTo": "avg"
@@ -155,13 +261,25 @@
                 "items": [
                   {
                     "id": "f-svc-dq2",
-                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
                     "op": "=",
                     "value": "factorylens"
                   },
                   {
                     "id": "f-name-dq2",
-                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
                     "op": "=",
                     "value": "clean"
                   }
@@ -174,7 +292,13 @@
               "limit": null,
               "orderBy": [],
               "groupBy": [
-                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+                {
+                  "key": "line_id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "line_id--string--tag--false"
+                }
               ],
               "legend": "null_ratio {{line_id}}",
               "reduceTo": "avg"
@@ -221,13 +345,25 @@
                 "items": [
                   {
                     "id": "f-svc-oee",
-                    "key": { "key": "serviceName", "dataType": "string", "type": "", "isColumn": true, "id": "serviceName--string----true" },
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
                     "op": "=",
                     "value": "factorylens"
                   },
                   {
                     "id": "f-name-oee",
-                    "key": { "key": "name", "dataType": "string", "type": "", "isColumn": true, "id": "name--string----true" },
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
                     "op": "=",
                     "value": "aggregate"
                   }
@@ -240,9 +376,414 @@
               "limit": null,
               "orderBy": [],
               "groupBy": [
-                { "key": "line_id", "dataType": "string", "type": "tag", "isColumn": false, "id": "line_id--string--tag--false" }
+                {
+                  "key": "line_id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "line_id--string--tag--false"
+                }
               ],
               "legend": "{{line_id}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-llm-tokens",
+      "title": "LLM token usage - input vs output (per provider)",
+      "description": "Tokens consumed by the Q&A agent's own LLM calls, read off the gen_ai.usage.* attributes on llm_ask spans and grouped by provider. This is what an answer actually cost. Euri is the primary; any groq series means the fallback fired.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "sum",
+              "aggregateAttribute": {
+                "key": "gen_ai.usage.input_tokens",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false,
+                "id": "gen_ai.usage.input_tokens--float64--tag--false"
+              },
+              "timeAggregation": "sum",
+              "spaceAggregation": "sum",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-tokin",
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-tokin",
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
+                    "op": "=",
+                    "value": "llm_ask"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                {
+                  "key": "gen_ai.system",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "gen_ai.system--string--tag--false"
+                }
+              ],
+              "legend": "input {{gen_ai.system}}",
+              "reduceTo": "sum"
+            },
+            {
+              "dataSource": "traces",
+              "queryName": "B",
+              "aggregateOperator": "sum",
+              "aggregateAttribute": {
+                "key": "gen_ai.usage.output_tokens",
+                "dataType": "float64",
+                "type": "tag",
+                "isColumn": false,
+                "id": "gen_ai.usage.output_tokens--float64--tag--false"
+              },
+              "timeAggregation": "sum",
+              "spaceAggregation": "sum",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-tokout",
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-tokout",
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
+                    "op": "=",
+                    "value": "llm_ask"
+                  }
+                ]
+              },
+              "expression": "B",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                {
+                  "key": "gen_ai.system",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "gen_ai.system--string--tag--false"
+                }
+              ],
+              "legend": "output {{gen_ai.system}}",
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-llm-latency",
+      "title": "LLM call latency - p95 (per provider)",
+      "description": "95th-percentile duration of llm_ask spans by provider. The fallback path only runs when the primary is already failing, so a groq series appearing here is itself the signal that something upstream went wrong.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "ns",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "p95",
+              "aggregateAttribute": {
+                "key": "durationNano",
+                "dataType": "float64",
+                "type": "",
+                "isColumn": true,
+                "id": "durationNano--float64----true"
+              },
+              "timeAggregation": "p95",
+              "spaceAggregation": "p95",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-lat",
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-lat",
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
+                    "op": "=",
+                    "value": "llm_ask"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                {
+                  "key": "gen_ai.system",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "gen_ai.system--string--tag--false"
+                }
+              ],
+              "legend": "p95 {{gen_ai.system}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-llm-calls",
+      "title": "LLM calls and fallback rate",
+      "description": "Count of llm_ask spans grouped by which provider answered and whether the fallback was used. A rising fallback_used=true share means the primary provider is degraded.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "count",
+              "aggregateAttribute": {},
+              "timeAggregation": "count",
+              "spaceAggregation": "count",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-calls",
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-calls",
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
+                    "op": "=",
+                    "value": "llm_ask"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                {
+                  "key": "gen_ai.system",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "gen_ai.system--string--tag--false"
+                },
+                {
+                  "key": "fallback_used",
+                  "dataType": "bool",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "fallback_used--bool--tag--false"
+                }
+              ],
+              "legend": "{{gen_ai.system}} fallback={{fallback_used}}",
+              "reduceTo": "avg"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "id": "panel-stream-alerts",
+      "title": "Streaming alerts by kind (per line)",
+      "description": "Condition triggers fired by the live feed: threshold_breach (a hot reading), malformed_reading (a bad row rejected at ingest) and line_silent (a line that stopped reporting, caught by the wall-clock watchdog). Only populated by `factorylens stream`.",
+      "panelTypes": "graph",
+      "isStacked": false,
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "promql": [],
+        "clickhouse_sql": [],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "count",
+              "aggregateAttribute": {},
+              "timeAggregation": "count",
+              "spaceAggregation": "count",
+              "functions": [],
+              "filters": {
+                "op": "AND",
+                "items": [
+                  {
+                    "id": "f-svc-alerts",
+                    "key": {
+                      "key": "serviceName",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "serviceName--string----true"
+                    },
+                    "op": "=",
+                    "value": "factorylens"
+                  },
+                  {
+                    "id": "f-name-alerts",
+                    "key": {
+                      "key": "name",
+                      "dataType": "string",
+                      "type": "",
+                      "isColumn": true,
+                      "id": "name--string----true"
+                    },
+                    "op": "=",
+                    "value": "alert"
+                  }
+                ]
+              },
+              "expression": "A",
+              "disabled": false,
+              "stepInterval": 60,
+              "having": [],
+              "limit": null,
+              "orderBy": [],
+              "groupBy": [
+                {
+                  "key": "alert.kind",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "alert.kind--string--tag--false"
+                },
+                {
+                  "key": "line_id",
+                  "dataType": "string",
+                  "type": "tag",
+                  "isColumn": false,
+                  "id": "line_id--string--tag--false"
+                }
+              ],
+              "legend": "{{alert.kind}} {{line_id}}",
               "reduceTo": "avg"
             }
           ],

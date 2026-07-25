@@ -1,6 +1,6 @@
 # SigNoz dashboard — FactoryLens
 
-`factorylens-dashboard.json` defines the three panels the scope calls for, built
+`factorylens-dashboard.json` defines the seven dashboard panels, built
 from the OTel spans the pipeline emits (service **`factorylens`**):
 
 1. **Pipeline stage duration** — avg duration per stage over time (stackable to
