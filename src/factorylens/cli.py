@@ -24,7 +24,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from factorylens import agent
+from factorylens import agent, sources, stream
 from factorylens.config import get_settings
 from factorylens.exceptions import LLMProviderError
 from factorylens.generator import DEMO_SCENARIO, degrading_scenario, generate
@@ -34,7 +34,7 @@ from factorylens.pipeline import run_pipeline
 from factorylens.telemetry import setup_telemetry
 
 app = typer.Typer(
-    help="FactoryLens — manufacturing pipeline health & data-quality observability for SigNoz.",
+    help="FactoryLens - manufacturing pipeline health & data-quality observability for SigNoz.",
     add_completion=False,
     no_args_is_help=True,
 )
@@ -134,6 +134,141 @@ def run(
         )
 
 
+_ALERT_STYLE = {
+    stream.ALERT_SILENCE: "bold red",
+    stream.ALERT_THRESHOLD: "yellow",
+    stream.ALERT_MALFORMED: "magenta",
+}
+
+
+# Named explicitly: the function can't be called `stream` without shadowing the
+# imported module, and Typer would otherwise expose it as "stream-".
+@app.command("stream")
+def stream_(
+    duration: float = typer.Option(
+        30.0, "--duration", "-d", min=1.0,
+        help="Wall-clock seconds to consume the live feed for.",
+    ),
+    window_hours: float = typer.Option(
+        8.0, "--window", "-w", min=0.1,
+        help="Tumbling window width in simulated hours (8 = one shift).",
+    ),
+    time_scale: float = typer.Option(
+        6000.0, "--time-scale", "-s", min=1.0,
+        help="Simulated seconds per wall-clock second. The demo's time compression.",
+    ),
+    cadence_min: float = typer.Option(
+        1.0, "--cadence", "-c", min=0.01,
+        help="Simulated minutes between a line's batches.",
+    ),
+    temp_max: float = typer.Option(
+        85.0, "--temp-max", help="Temperature that trips a threshold alert."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-stage logs."),
+) -> None:
+    """Consume the live sensor feed, windowing it into pipeline runs.
+
+    The real-time counterpart to ``run``. Instead of one finished dataset, a
+    simulated PLC feed emits batches over time; readings are buffered into
+    event-time windows and each closed window goes through the same pipeline,
+    producing the same spans. Condition triggers (threshold breach, malformed
+    reading, a line going silent) fire immediately, without waiting for a window.
+
+    ``run`` remains the deterministic, offline path. This one is the one that
+    behaves like a factory.
+    """
+    _init_logging(verbose)
+    settings = get_settings()
+    telemetry = setup_telemetry(settings)
+
+    feed_config = sources.FeedConfig(
+        cadence_min=cadence_min, time_scale=time_scale, pace=True
+    )
+    stream_config = stream.StreamConfig(
+        window_min=window_hours * 60.0, temp_max=temp_max
+    )
+    silence_s = stream.expected_silence_threshold_s(
+        feed_config.wall_interval_s, stream_config
+    )
+
+    console.print(
+        f"Streaming for [bold]{duration:.0f}s[/bold] at "
+        f"[bold]{time_scale:.0f}x[/bold] - one {window_hours:.0f}h window every "
+        f"~{window_hours * 60 * 60 / time_scale:.1f}s, "
+        f"silence threshold {silence_s:.1f}s. Ctrl-C to stop early."
+    )
+
+    def on_alert(alert: stream.Alert) -> None:
+        style = _ALERT_STYLE.get(alert.kind, "white")
+        extra = f" (+{alert.suppressed} suppressed)" if alert.suppressed else ""
+        console.print(
+            f"  [{style}]ALERT[/{style}] {alert.line_id}  {alert.kind}: "
+            f"{alert.detail}{extra}"
+        )
+
+    def on_window(window: stream.Window, results: dict[str, OEEResult]) -> None:
+        summary = "  ".join(
+            f"{lid} [{_oee_color(results[lid].oee)}]{results[lid].oee:.2f}"
+            f"[/{_oee_color(results[lid].oee)}]"
+            for lid in sorted(results)
+        )
+        late = f" late={window.late}" if window.late else ""
+        console.print(
+            f"  window {window.index} closed  rows={len(window.readings)}{late}  "
+            f"OEE {summary}"
+        )
+
+    runner = stream.StreamRunner(telemetry, stream_config)
+    feed = sources.demo_feed(feed_config)
+    try:
+        try:
+            stats = runner.run(
+                feed,
+                duration_s=duration,
+                silence_threshold_s=silence_s,
+                on_window=on_window,
+                on_alert=on_alert,
+            )
+        except KeyboardInterrupt:
+            feed.close()
+            stats = runner.stats
+            console.print("[yellow]Interrupted - reporting what was collected.[/yellow]")
+        telemetry.force_flush()
+    finally:
+        telemetry.shutdown()
+
+    if stats.last_results:
+        console.print(_oee_table(stats.last_results))
+
+    lag = "  ".join(
+        f"{lid}={secs:.0f}s" for lid, secs in sorted(stats.max_lag_s.items())
+    )
+    alerts = "  ".join(f"{k}={v}" for k, v in sorted(stats.alerts.items())) or "none"
+    console.print(
+        Panel(
+            f"readings   {stats.readings}\n"
+            f"windows    {stats.windows}\n"
+            f"late rows  {stats.late}\n"
+            f"peak lag   {lag}\n"
+            f"alerts     {alerts}",
+            title="Stream summary",
+            border_style="blue",
+        )
+    )
+    if telemetry.exporting_to_signoz:
+        console.print(
+            f"[green]Exported to SigNoz[/green] (service "
+            f"'{settings.otel_service_name}'). Spans: stream_window, pipeline_run, "
+            f"stages, alert. Metrics: readings.received, ingest.lag_ms, "
+            f"sensor.temperature, alerts.fired."
+        )
+    else:
+        console.print(
+            "[yellow]SigNoz not configured[/yellow] - spans went to the console "
+            "and metrics were dropped. Set SIGNOZ_INGESTION_KEY in .env."
+        )
+
+
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="e.g. \"why is line_3's OEE low?\""),
@@ -163,7 +298,8 @@ def ask(
         with console.status("Asking..."):
             try:
                 reply = agent.answer(
-                    question, snapshot, settings=settings, tracer=telemetry.tracer()
+                    question, snapshot, settings=settings,
+                    tracer=telemetry.tracer(), meter=telemetry.meter(),
                 )
             except LLMProviderError as e:
                 console.print(
@@ -181,7 +317,7 @@ def ask(
 def check(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show diagnostic logs."),
 ) -> None:
-    """Send one hello-world span to SigNoz — the Day-1 auth test."""
+    """Send one hello-world span to SigNoz - the Day-1 auth test."""
     _init_logging(verbose)
     settings = get_settings()
 

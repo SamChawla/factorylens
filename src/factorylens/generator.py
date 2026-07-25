@@ -102,39 +102,59 @@ _CORRUPTIONS = (
 )
 
 
+def baseline_row(spec: LineSpec, batch_index: int, ts: pd.Timestamp,
+                 rng: np.random.Generator) -> dict:
+    """One line's clean batch record for ``batch_index``, before fault injection.
+
+    Draws exactly four values from ``rng``, in this order: downtime, performance,
+    quality, temperature. Both the batch generator and the streaming feed
+    (``sources.MockPlcFeed``) call this, so a line's physics are defined once and
+    a streamed batch is statistically the same animal as a generated one.
+    """
+    downtime = float(np.clip(
+        rng.normal(spec.downtime_mean, spec.downtime_sd), 0.0, spec.planned_min * 0.5
+    ))
+    run_min = max(spec.planned_min - downtime, 1.0)
+    ideal_units = run_min * 60.0 / spec.ideal_cycle_s
+    performance = float(np.clip(
+        rng.normal(spec.performance_mean, spec.performance_sd), 0.4, 1.0
+    ))
+    total = int(round(ideal_units * performance))
+    quality = float(np.clip(
+        rng.normal(spec.quality_mean, spec.quality_sd), 0.5, 1.0
+    ))
+    good = int(round(total * quality))
+    temperature = float(rng.normal(spec.temp_mean, spec.temp_sd))
+
+    return {
+        schema.TS: ts.isoformat(),
+        schema.LINE_ID: spec.line_id,
+        schema.BATCH_ID: f"{spec.line_id}-b{batch_index:03d}",
+        schema.PLANNED_MIN: round(spec.planned_min, 2),
+        schema.DOWNTIME_MIN: round(downtime, 2),
+        schema.IDEAL_CYCLE_S: spec.ideal_cycle_s,
+        schema.TOTAL_COUNT: total,
+        schema.GOOD_COUNT: good,
+        schema.TEMPERATURE: round(temperature, 2),
+    }
+
+
+def apply_random_corruption(row: dict, rng: np.random.Generator) -> None:
+    """Break exactly one integrity rule on ``row``, chosen from ``_CORRUPTIONS``.
+
+    Shared with the streaming feed so "how a row goes wrong" has one definition
+    whether the row was generated in bulk or arrived over a wire.
+    """
+    _CORRUPTIONS[rng.integers(len(_CORRUPTIONS))](row)
+
+
 def _baseline_rows(spec: LineSpec, start: pd.Timestamp, interval_min: int,
                    rng: np.random.Generator) -> list[dict]:
     """Generate a line's clean baseline batches, before any fault injection."""
-    rows: list[dict] = []
-    for i in range(spec.n_batches):
-        ts = start + pd.Timedelta(minutes=i * interval_min)
-        downtime = float(np.clip(
-            rng.normal(spec.downtime_mean, spec.downtime_sd), 0.0, spec.planned_min * 0.5
-        ))
-        run_min = max(spec.planned_min - downtime, 1.0)
-        ideal_units = run_min * 60.0 / spec.ideal_cycle_s
-        performance = float(np.clip(
-            rng.normal(spec.performance_mean, spec.performance_sd), 0.4, 1.0
-        ))
-        total = int(round(ideal_units * performance))
-        quality = float(np.clip(
-            rng.normal(spec.quality_mean, spec.quality_sd), 0.5, 1.0
-        ))
-        good = int(round(total * quality))
-        temperature = float(rng.normal(spec.temp_mean, spec.temp_sd))
-
-        rows.append({
-            schema.TS: ts.isoformat(),
-            schema.LINE_ID: spec.line_id,
-            schema.BATCH_ID: f"{spec.line_id}-b{i:03d}",
-            schema.PLANNED_MIN: round(spec.planned_min, 2),
-            schema.DOWNTIME_MIN: round(downtime, 2),
-            schema.IDEAL_CYCLE_S: spec.ideal_cycle_s,
-            schema.TOTAL_COUNT: total,
-            schema.GOOD_COUNT: good,
-            schema.TEMPERATURE: round(temperature, 2),
-        })
-    return rows
+    return [
+        baseline_row(spec, i, start + pd.Timedelta(minutes=i * interval_min), rng)
+        for i in range(spec.n_batches)
+    ]
 
 
 def _inject_faults(rows: list[dict], spec: LineSpec, scenario: Scenario,

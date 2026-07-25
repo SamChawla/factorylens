@@ -7,6 +7,9 @@ and the two halves can never drift apart.
 
 from __future__ import annotations
 
+import math
+from typing import Mapping
+
 import pandas as pd
 
 # --- Columns of the raw production dataset ---
@@ -81,6 +84,48 @@ def malformed_mask(df: pd.DataFrame) -> pd.Series:
 
     mask = non_numeric | negative | good_gt_total | bad_planned | blank_id
     return mask.fillna(True)
+
+
+def _as_number(value: object) -> float | None:
+    """Scalar equivalent of ``pd.to_numeric(errors="coerce")``: None where NaN."""
+    try:
+        num = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return num if math.isfinite(num) else None
+
+
+def is_malformed_row(row: Mapping[str, object]) -> bool:
+    """Scalar twin of :func:`malformed_mask`, for one row at a time.
+
+    A streaming source sees rows one by one and must judge them on arrival — it
+    has no DataFrame to vectorise over. Rather than let a second definition of
+    "malformed" drift away from the first, this applies the *same* rules to a
+    single mapping, and ``test_schema.py`` pins the two implementations equal
+    over a generated dataset.
+    """
+    for col in (PLANNED_MIN, DOWNTIME_MIN, IDEAL_CYCLE_S, TOTAL_COUNT, GOOD_COUNT):
+        if _as_number(row.get(col)) is None:
+            return True
+
+    total = _as_number(row.get(TOTAL_COUNT))
+    good = _as_number(row.get(GOOD_COUNT))
+    planned = _as_number(row.get(PLANNED_MIN))
+    assert total is not None and good is not None and planned is not None
+
+    if total < 0 or good < 0:
+        return True
+    if good > total:
+        return True
+    if planned <= 0:
+        return True
+
+    for col in (BATCH_ID, LINE_ID):
+        value = row.get(col)
+        if value is None or str(value).strip() == "":
+            return True
+
+    return False
 
 
 def null_ratio(df: pd.DataFrame) -> float:
