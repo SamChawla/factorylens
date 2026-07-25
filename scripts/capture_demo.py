@@ -7,13 +7,13 @@ Runs end to end:
      screenshot it and each panel, then open the Alerts page.
   3. Record the whole browser session to video.
 
-Outputs land in `demo/output/` (screenshots + a .webm video) — the visual assets
+Outputs land in `scripts/output/` (screenshots + a .webm video) — the visual assets
 for the README, blog, and demo video.
 
 Usage (from repo root, local SigNoz up and data-capable):
     export SIGNOZ_UI_PASSWORD=...        # the local admin password
     export SIGNOZ_API_KEY=...            # local API key (to resolve dashboard UUID)
-    uv run python demo/capture_demo.py [--no-seed] [--headed]
+    uv run python scripts/capture_demo.py [--no-seed] [--headed]
 """
 
 from __future__ import annotations
@@ -26,7 +26,9 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The Playwright/SigNoz helper lives with the tests, which are its primary
+# consumer; this script is the secondary one.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 from signoz_session import SigNozConfig, login, open_dashboard  # noqa: E402
 
 OUTPUT = Path(__file__).resolve().parent / "output"
