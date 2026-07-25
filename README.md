@@ -81,7 +81,7 @@ Full step-by-step setup, expected output and troubleshooting:
 ```bash
 uv sync                      # reproducible env from the committed lockfile
 cp .env.example .env         # then fill in your keys (.env is gitignored)
-uv run pytest                # 140 tests (8 UI tests skip without SigNoz)
+uv run pytest                # 155 tests (UI tests skip without SigNoz)
 ```
 
 ### Stand up SigNoz (self-hosted — the reference deployment)
@@ -156,24 +156,50 @@ uv run factorylens stream --duration 30
 uv run factorylens stream --duration 60 --window 4 --time-scale 20000
 ```
 
-### Where the data comes from
+### Where the data comes from — and how it reaches a real plant
 
-There are no sensors — the feed is simulated. But it is simulated *as a feed*,
-not as a finished file, and that distinction is the point.
+The *demo* runs on a simulated feed, because a demo needs to be deterministic
+and can't dial into a factory. But the path to a real plant isn't a promise —
+**the production adapters are implemented and tested against the real
+protocol.** Three interchangeable implementations of one `SensorSource`:
 
-`factorylens run` uses a seeded generator that produces the entire dataset up
-front. `factorylens stream` puts a `SensorSource` in front of the pipeline: a
-mock PLC emits batches one at a time, each stamped with when the line says it
-happened and when we actually received it. Readings are buffered into tumbling
-8-hour event-time windows, and every closed window runs through the **same,
-unchanged** pipeline — so the spans, the dashboards and the Q&A agent all work
-exactly as before.
+| source | reads | status |
+|--------|-------|--------|
+| `MockPlcFeed` | a seeded simulation | what the demo runs on |
+| `OpcUaSource` | a live **OPC UA** server (subscription, not polling) | tested end to end against a real server |
+| `MqttSource` | **MQTT** on the Sparkplug B topic tree | tested over the real client callback path |
 
-Swapping the mock for a real plant means one new class implementing
-`subscribe() -> Iterator[Reading]` on top of OPC UA, MQTT Sparkplug, or an MES
-export. Nothing downstream changes — the protocol is an `Iterator` precisely
-because that is the shape both a simulator and a real queue-draining client
-already have.
+```bash
+uv sync --extra industrial     # asyncua + paho-mqtt; core install stays light
+```
+
+Two details make these real rather than decorative.
+
+**The timestamps are the protocol's own.** Every OPC UA `DataValue` carries a
+`SourceTimestamp` (when the *device* sampled it) and a `ServerTimestamp` (when
+the server processed it). `Reading.event_time` is the SourceTimestamp and
+`ingest_time` is stamped on arrival — so `factorylens.ingest.lag_ms` measures a
+genuine gap between the machine's clock and ours. The event-time/ingest-time
+split wasn't invented for this project; it's what OPC UA already gives you.
+
+**Tags are not rows.** A PLC exposes individual tags — a counter, a state word,
+a thermocouple — each changing at its own rate, while `planned_min`,
+`ideal_cycle_s` and `batch_id` come from the MES at a completely different one.
+`TagAssembler` performs that join: it holds the latest value of every mapped tag
+per line and cuts a batch when the batch identifier rolls over. An incomplete
+batch is discarded with a warning rather than defaulted into a plausible-looking
+row — a wrong OEE is worse than a missing one.
+
+Sparkplug's **NDEATH** (the broker publishing an edge node's Last Will when it
+drops off) maps directly onto the `line_silent` alert — the industrial
+standard's own answer to "this line stopped reporting."
+
+What is *not* claimed: none of this has been run against physical PLC hardware,
+and `MqttSource` decodes JSON payloads rather than Sparkplug B's protobuf
+encoding (swap `decode_payload` to add it). What *is* proven, by
+[`tests/test_industrial.py`](tests/test_industrial.py), is that a live OPC UA
+server drives `OpcUaSource` → `StreamRunner` → the unchanged pipeline and emits
+the same `ingest`/`clean`/`transform`/`aggregate` spans everything else reads.
 
 What streaming adds that a finished dataset structurally cannot:
 
@@ -258,7 +284,7 @@ The load-bearing decisions and why they were made:
 
 ### Tested
 
-140 tests, no network calls in the default run. Both LLM providers are mocked —
+155 tests, no external network calls. Both LLM providers are mocked —
 the fallback path is covered because it only ever runs when the primary is
 already failing, which is precisely when nobody is watching.
 
@@ -273,10 +299,13 @@ already failing, which is precisely when nobody is watching.
 | `tests/test_stream.py` | windowing, watermarks, lateness, the silence watchdog, alerts |
 | `tests/test_telemetry.py` | Cloud vs self-hosted export gating, keyless auth, the logs bridge |
 | `tests/test_e2e_dashboard.py` | real browser: panels render with data, alert rules listed |
+| `tests/test_industrial.py` | a **live OPC UA server** driving the real adapter and the pipeline |
 
-The 8 UI tests drive a real browser against a running SigNoz and **skip
-automatically** when one isn't reachable, so a bare `uv run pytest` is 132
-passed / 8 skipped. With SigNoz up and `SIGNOZ_UI_PASSWORD` set, all 140 run.
+Two groups skip unless their dependency is present, so a bare `uv run pytest`
+stays green: the 8 UI tests need a reachable SigNoz plus `SIGNOZ_UI_PASSWORD`,
+and the 15 industrial tests need `uv sync --extra industrial`. The OPC UA ones
+stand up a real asyncua server in-process — no PLC required, and no mock in the
+loop.
 
 ## Honest limitations
 
@@ -284,14 +313,18 @@ passed / 8 skipped. With SigNoz up and `SIGNOZ_UI_PASSWORD` set, all 140 run.
   in-process. Querying *historical* telemetry from SigNoz's API is designed for
   (the `TelemetrySource` protocol) but not shipped — so it cannot answer about
   runs it did not trigger.
-- Manufacturing data is synthetic. The faults are modelled on real failure modes
-  (dead sensors, malformed rows, frozen batches), but no real plant data was used.
+- The demo's manufacturing data is synthetic. The faults are modelled on real
+  failure modes (dead sensors, malformed rows, frozen batches), but no real plant
+  data was used. The OPC UA and MQTT adapters are real and tested against a live
+  OPC UA server — not against physical PLC hardware.
+- `MqttSource` decodes JSON payloads on the Sparkplug topic tree; Sparkplug B's
+  protobuf encoding would need the generated module (one function to swap).
 
 ## Stack
 
 Python 3.12 · pandas · OpenTelemetry SDK (traces, metrics, logs over OTLP/HTTP) ·
 SigNoz (self-hosted via Foundry / Docker Compose; Cloud also supported) ·
-Typer + Rich ·
+OPC UA (asyncua) + MQTT (paho) · Typer + Rich ·
 structlog · pydantic-settings · pytest · Playwright · uv
 
 ## AI assistance disclosure

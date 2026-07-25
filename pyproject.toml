@@ -19,6 +19,12 @@ dependencies = [
 [project.scripts]
 factorylens = "factorylens.cli:app"
 
+[project.optional-dependencies]
+industrial = [
+    "asyncua>=2.0.1",
+    "paho-mqtt>=2.1.0",
+]
+
 [dependency-groups]
 dev = [
     "playwright>=1.61.0",
