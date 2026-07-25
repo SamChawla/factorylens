@@ -48,8 +48,8 @@ foundryctl cast -f casting.yaml                  # UI :8080, OTLP :4318
 ```
 
 First run pulls several GB. When it's up, open <http://localhost:8080> and create
-the admin account (first-run setup). Full detail, including importing the
-dashboard and alerts: **[self-hosted.md](self-hosted.md)**.
+the admin account (first-run setup). Then import the dashboard and alerts from
+this repo before you start checking panels in the UI.
 
 Then edit `.env`:
 

@@ -11,7 +11,7 @@ Playwright drives the **local self-hosted SigNoz** UI to do two things:
    not just into ClickHouse.
 
 Both target `localhost:8080` by default — the reproducible instance stood up with
-`foundryctl cast` (see [../docs/self-hosted.md](../docs/self-hosted.md)).
+`foundryctl cast` as described in [../docs/getting-started.md](../docs/getting-started.md).
 
 ## Prerequisites
 

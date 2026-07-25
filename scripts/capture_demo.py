@@ -52,8 +52,11 @@ def _cli(*args: str) -> None:
 def seed_data() -> None:
     """Generate a continuous, recent curve plus alerts and LLM spans."""
     print("Seeding telemetry into local SigNoz...")
-    _cli("run", "--runs", "8", "--interval", "3")           # OEE trend
-    _cli("stream", "--duration", "35", "--time-scale", "15000")  # alerts + metrics
+    # Spread over ~3 minutes: a chart needs a curve across its width, and
+    # spans are stamped at wall-clock time, so the seed duration *is* the
+    # width of the data. A fast seed leaves a spike at the right-hand edge.
+    _cli("run", "--runs", "12", "--interval", "13")          # OEE trend, ~2.5 min
+    _cli("stream", "--duration", "45", "--time-scale", "15000")  # alerts + metrics
     for q in (
         "why is line_3's OEE low?",
         "which line drops the most rows?",
@@ -86,7 +89,7 @@ def _shoot_panel(page, item, path: Path, retries: int = 3) -> None:
                 raise RuntimeError("canvas not drawn yet")
         except Exception:
             pass
-        page.wait_for_timeout(2000 + attempt * 1500)
+        page.wait_for_timeout(3500 + attempt * 2000)
         item.screenshot(path=str(path))
         if path.stat().st_size >= _MIN_PANEL_BYTES:
             return
@@ -95,7 +98,24 @@ def _shoot_panel(page, item, path: Path, retries: int = 3) -> None:
         page.wait_for_timeout(600)
 
 
-def capture(headed: bool) -> None:
+def _render_all_panels(page) -> None:
+    """Scroll the whole dashboard so every panel draws, then return to the top.
+
+    SigNoz renders a panel's <canvas> only when it scrolls into view. A full-page
+    screenshot taken straight after load therefore captures blank cards for
+    everything below the fold — the data is fine, the chart simply has not been
+    drawn yet.
+    """
+    height = page.evaluate("document.body.scrollHeight")
+    step = 700
+    for y in range(0, height, step):
+        page.evaluate(f"window.scrollTo(0, {y})")
+        page.wait_for_timeout(1800)   # uPlot needs a beat to paint
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(4000)   # let the top panels settle again
+
+
+def capture(headed: bool, window: str = "5m") -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
     config = SigNozConfig.from_env()
     print(f"Driving SigNoz UI at {config.base_url} ...")
@@ -103,17 +123,26 @@ def capture(headed: bool) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not headed)
         context = browser.new_context(
-            viewport={"width": 1600, "height": 1000},
+            # Taller than typical on purpose: SigNoz only paints a panel's
+            # canvas once it enters the viewport, so a short window leaves the
+            # lower panels blank in a full-page screenshot.
+            viewport={"width": 1600, "height": 1400},
             record_video_dir=str(OUTPUT),
-            record_video_size={"width": 1600, "height": 1000},
+            record_video_size={"width": 1600, "height": 1400},
         )
         page = context.new_page()
 
         login(page, config)
         print("  logged in")
 
-        open_dashboard(page, config, relative_time="30m")
+        open_dashboard(page, config, relative_time=window)
+        # Some panels take well over ten seconds to paint on a freshly restarted
+        # stack — the query returns quickly, uPlot does not. Screenshotting early
+        # yields a card with a legend and no curve, which looks like missing data
+        # and isn't.
+        page.wait_for_timeout(15000)
         print("  dashboard open")
+        _render_all_panels(page)
         page.screenshot(path=str(OUTPUT / "01-dashboard-full.png"), full_page=True)
 
         # Each panel is a .react-grid-item; match one to each title by its text
@@ -161,10 +190,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-seed", action="store_true", help="Skip data seeding.")
     ap.add_argument("--headed", action="store_true", help="Show the browser.")
+    ap.add_argument("--window", default="5m",
+                    help="Dashboard time range. Match it to how long the seed ran.")
     args = ap.parse_args()
     if not args.no_seed:
         seed_data()
-    capture(headed=args.headed)
+    capture(headed=args.headed, window=args.window)
     return 0
 
 

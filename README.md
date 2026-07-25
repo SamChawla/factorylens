@@ -21,10 +21,10 @@ OpenTelemetry and shipped to **self-hosted SigNoz** (Foundry / Docker Compose;
 SigNoz Cloud works identically). Built for the *Agents of SigNoz* hackathon
 (WeMakeDevs × SigNoz, Jul 20–26 2026) — **Track 01: AI & Agent Observability**.
 
-📄 **Overview page:** [`docs/index.html`](docs/index.html) — a one-page visual
-walkthrough of the whole system (open locally, or enable GitHub Pages to serve it).
 
 ---
+
+**Blog post:** [I asked my factory's telemetry why a number was wrong](https://medium.com/@sumitschawla/i-asked-my-factorys-telemetry-why-a-number-was-wrong-e61d633c88b6?sharedUserId=sumitschawla)
 
 ## The problem
 
@@ -86,6 +86,19 @@ SigNoz how long the agent took and which provider answered.
 
 ---
 
+## Screenshots
+
+<p>
+  <img src="assets/readme/dashboard-full.png" alt="FactoryLens dashboard in SigNoz" width="100%">
+</p>
+<p>
+  <img src="assets/readme/oee.png" alt="OEE per line panel" width="49%">
+  <img src="assets/readme/data-quality.png" alt="Data-quality trend panel" width="49%">
+</p>
+<p>
+  <img src="assets/readme/alerts.png" alt="Alert rules page showing the OEE alert firing" width="100%">
+</p>
+
 ## Quickstart
 
 Full step-by-step setup, expected output and troubleshooting:
@@ -120,8 +133,8 @@ EURI_API_KEY=<primary LLM>     # optional, for `ask`
 GROQ_API_KEY=<fallback LLM>    # optional, for `ask`
 ```
 
-Full walkthrough — first-run setup, importing the dashboard and alerts, teardown:
-**[docs/self-hosted.md](docs/self-hosted.md)**.
+The full setup, dashboard import, and troubleshooting notes live in
+**[docs/getting-started.md](docs/getting-started.md)**.
 
 <details>
 <summary><b>Running against SigNoz Cloud instead</b></summary>
