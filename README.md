@@ -14,6 +14,7 @@ cites the data.**
 ![MQTT](https://img.shields.io/badge/MQTT-Sparkplug%20B-660066?logo=mqtt&logoColor=white)
 ![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-locked-DE5FE9?logo=uv&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 Manufacturing pipeline health & data-quality observability, instrumented with
 OpenTelemetry and shipped to **self-hosted SigNoz** (Foundry / Docker Compose;
@@ -372,6 +373,7 @@ loop.
 | **Config / logs** | pydantic-settings · structlog | typed config from env only; log fields are the same fields on the span |
 | **Testing** | pytest · pytest-cov · Playwright | 155 tests, incl. a real OPC UA server and a real browser |
 | **Packaging** | uv, lockfile committed | `uv sync` reproduces the exact environment on demo day |
+| **License** | MIT | permissive — reuse it, including the OPC UA and MQTT adapters |
 
 Reproduce the numbers in the badges:
 

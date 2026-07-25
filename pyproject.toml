@@ -1,9 +1,11 @@
 [project]
 name = "factorylens"
 version = "0.1.0"
-description = "Manufacturing pipeline health & data-quality observability, instrumented for SigNoz Cloud (Agents of SigNoz hackathon, Track 01)."
+description = "Manufacturing pipeline health & data-quality observability, instrumented with OpenTelemetry for SigNoz (Agents of SigNoz hackathon, Track 01)."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pandas>=2.2",
     "numpy>=2.0",
