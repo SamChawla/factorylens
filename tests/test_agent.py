@@ -91,7 +91,8 @@ def test_format_context_handles_an_empty_snapshot():
 def test_answer_sends_the_telemetry_to_the_llm(monkeypatch, source):
     captured = {}
 
-    def fake_ask(prompt, *, system=None, settings=None, tracer=None, timeout=60.0):
+    def fake_ask(prompt, *, system=None, settings=None, tracer=None, meter=None,
+                 timeout=60.0):
         captured.update(prompt=prompt, system=system)
         return "because line_3 dropped rows"
 

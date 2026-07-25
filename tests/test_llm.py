@@ -142,3 +142,154 @@ def test_sends_bearer_auth_and_the_question(monkeypatch):
     contents = " ".join(m["content"] for m in captured["json"]["messages"])
     assert roles == ["system", "user"]
     assert "why is line_3 OEE low?" in contents
+
+
+# --- GenAI semantic-convention instrumentation (piece 7) ---------------------
+
+
+def _ok_with_usage(content: str, *, model="groq-model", prompt=120, completion=45,
+                   finish="stop") -> _Resp:
+    """An OpenAI-compatible response carrying the usual accounting block."""
+    return _Resp(200, {
+        "model": model,
+        "choices": [{"message": {"content": content}, "finish_reason": finish}],
+        "usage": {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": prompt + completion,
+        },
+    })
+
+
+def _span_of(exporter, name="llm_ask"):
+    spans = [s for s in exporter.get_finished_spans() if s.name == name]
+    assert spans, f"no {name} span was exported"
+    return spans[-1]
+
+
+@pytest.fixture
+def traced():
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from factorylens.telemetry import setup_telemetry
+
+    exporter = InMemorySpanExporter()
+    reader = InMemoryMetricReader()
+    tel = setup_telemetry(
+        Settings(telemetry_enabled=False), exporter=exporter, metric_reader=reader
+    )
+    yield tel, exporter, reader
+    tel.shutdown()
+
+
+def test_call_captures_token_usage(monkeypatch):
+    monkeypatch.setattr(llm.requests, "post",
+                        lambda *a, **k: _ok_with_usage("hi", prompt=120, completion=45))
+    result = llm._call(llm._providers(_settings())[0], [], 30.0)
+    assert result.content == "hi"
+    assert result.input_tokens == 120
+    assert result.output_tokens == 45
+    assert result.finish_reason == "stop"
+
+
+def test_missing_usage_block_still_answers(monkeypatch):
+    """A provider that omits `usage` must not turn a good answer into a failure."""
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _ok("plain answer"))
+    result = llm._call(llm._providers(_settings())[0], [], 30.0)
+    assert result.content == "plain answer"
+    assert result.input_tokens is None and result.output_tokens is None
+
+
+def test_malformed_usage_block_is_ignored_not_fatal(monkeypatch):
+    bad = _Resp(200, {
+        "choices": [{"message": {"content": "answer"}}],
+        "usage": {"prompt_tokens": "lots", "completion_tokens": None},
+    })
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: bad)
+    result = llm._call(llm._providers(_settings())[0], [], 30.0)
+    assert result.content == "answer"
+    assert result.input_tokens is None and result.output_tokens is None
+
+
+def test_span_carries_genai_semantic_conventions(monkeypatch, traced):
+    tel, exporter, _ = traced
+    monkeypatch.setattr(llm.requests, "post",
+                        lambda *a, **k: _ok_with_usage("a", model="euri-actual"))
+    llm.ask("q", settings=_settings(), tracer=tel.tracer())
+
+    attrs = _span_of(exporter).attributes
+    assert attrs["gen_ai.operation.name"] == "chat"
+    assert attrs["gen_ai.system"] == "euri"
+    assert attrs["gen_ai.request.model"] == "euri-model"
+    assert attrs["gen_ai.response.model"] == "euri-actual"
+    assert attrs["gen_ai.usage.input_tokens"] == 120
+    assert attrs["gen_ai.usage.output_tokens"] == 45
+    assert tuple(attrs["gen_ai.response.finish_reasons"]) == ("stop",)
+
+
+def test_span_keeps_the_fallback_attributes_alongside_the_conventions(monkeypatch, traced):
+    """The conventions are added, not substituted: fallback facts have no equivalent."""
+    tel, exporter, _ = traced
+    _respond(monkeypatch, _Resp(500, text="boom"), _ok_with_usage("from groq"))
+    llm.ask("q", settings=_settings(), tracer=tel.tracer())
+
+    attrs = _span_of(exporter).attributes
+    assert attrs["provider"] == "groq"
+    assert attrs["fallback_used"] is True
+    assert attrs["attempts"] == 2
+    assert attrs["gen_ai.system"] == "groq"
+
+
+def test_span_omits_token_attributes_when_the_provider_sends_none(monkeypatch, traced):
+    tel, exporter, _ = traced
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _ok("no usage"))
+    llm.ask("q", settings=_settings(), tracer=tel.tracer())
+
+    attrs = _span_of(exporter).attributes
+    assert "gen_ai.usage.input_tokens" not in attrs
+    assert attrs["gen_ai.request.model"] == "euri-model"
+
+
+def _points(reader, metric_name):
+    data = reader.get_metrics_data()
+    return [
+        point
+        for rm in (data.resource_metrics if data else [])
+        for sm in rm.scope_metrics
+        for metric in sm.metrics
+        if metric.name == metric_name
+        for point in metric.data.data_points
+    ]
+
+
+def test_token_usage_metric_splits_input_from_output(monkeypatch, traced):
+    tel, _, reader = traced
+    monkeypatch.setattr(llm.requests, "post",
+                        lambda *a, **k: _ok_with_usage("a", prompt=120, completion=45))
+    llm.ask("q", settings=_settings(), tracer=tel.tracer(), meter=tel.meter())
+
+    by_type = {
+        p.attributes["gen_ai.token.type"]: p.sum
+        for p in _points(reader, llm.TOKEN_USAGE_METRIC)
+    }
+    assert by_type == {"input": 120, "output": 45}
+
+
+def test_operation_duration_metric_is_recorded(monkeypatch, traced):
+    tel, _, reader = traced
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _ok_with_usage("a"))
+    llm.ask("q", settings=_settings(), tracer=tel.tracer(), meter=tel.meter())
+
+    points = _points(reader, llm.OPERATION_DURATION_METRIC)
+    assert len(points) == 1
+    assert points[0].count == 1
+    assert points[0].attributes["gen_ai.system"] == "euri"
+
+
+def test_metrics_are_optional(monkeypatch):
+    """No meter wired up must not break the call — the adapter stays standalone."""
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _ok_with_usage("a"))
+    assert llm.ask("q", settings=_settings()) == "a"

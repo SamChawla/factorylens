@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, Sequence
 
+from opentelemetry.metrics import Meter
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import Tracer
@@ -190,10 +191,13 @@ def answer(
     *,
     settings: Settings | None = None,
     tracer: Tracer | None = None,
+    meter: Meter | None = None,
 ) -> str:
     """Answer a question about the pipeline from its telemetry."""
     settings = settings or get_settings()
     context = format_context(snapshot)
     prompt = f"{context}\n\nQuestion: {question}"
     _log.info("agent_question", question=question, runs=len(snapshot.runs))
-    return llm.ask(prompt, system=SYSTEM_PROMPT, settings=settings, tracer=tracer)
+    return llm.ask(
+        prompt, system=SYSTEM_PROMPT, settings=settings, tracer=tracer, meter=meter
+    )
