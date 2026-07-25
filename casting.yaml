@@ -1,0 +1,22 @@
+# Foundry deployment spec for a self-hosted SigNoz stack (Docker Compose).
+#
+# This is the reproducible-deployment artifact the hackathon requires: judges may
+# run `foundryctl cast -f casting.yaml` to stand up the exact SigNoz that
+# FactoryLens exports to. Foundry validates Docker, generates the Compose files
+# into pours/deployment/, and starts the containers (see docs/self-hosted.md).
+#
+# The lockfile (casting.yaml.lock) is generated on the first `foundryctl cast`
+# and pins resolved image versions — commit it after the first run so the
+# deployment reproduces byte-for-byte.
+apiVersion: v1alpha1
+kind: Installation
+metadata:
+  name: signoz
+  labels:
+    project: factorylens
+spec:
+  deployment:
+    # Docker Compose: the lightest reproducible target, and the one the
+    # hackathon judges reproduce with.
+    mode: docker
+    flavor: compose

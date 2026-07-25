@@ -1,0 +1,49 @@
+{
+  "alert": "FactoryLens: line OEE below 0.65",
+  "alertType": "TRACES_BASED_ALERT",
+  "description": "A line OEE dropped under the floor. Use: factorylens ask, to find out why from the spans.",
+  "ruleType": "threshold_rule",
+  "evalWindow": "5m",
+  "frequency": "1m",
+  "version": "v5",
+  "preferredChannels": [],
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "traces",
+            "aggregations": [
+              {
+                "expression": "avg(oee)"
+              }
+            ],
+            "filter": {
+              "expression": "serviceName = 'factorylens' AND name = 'aggregate'"
+            },
+            "groupBy": [
+              {
+                "name": "line_id"
+              }
+            ],
+            "stepInterval": "1m"
+          }
+        }
+      ]
+    },
+    "target": 0.65,
+    "matchType": "1",
+    "op": "2",
+    "selectedQuery": "A"
+  },
+  "labels": {
+    "severity": "critical"
+  },
+  "annotations": {
+    "summary": "A production line OEE fell below the 0.65 floor.",
+    "description": "A line OEE dropped under the floor. Use: factorylens ask, to find out why from the spans."
+  }
+}
