@@ -21,7 +21,9 @@ factorylens = "factorylens.cli:app"
 
 [dependency-groups]
 dev = [
+    "playwright>=1.61.0",
     "pytest>=8.3",
+    "pytest-playwright>=0.8.0",
 ]
 
 [build-system]
