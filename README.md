@@ -166,7 +166,7 @@ protocol.** Three interchangeable implementations of one `SensorSource`:
 | source | reads | status |
 |--------|-------|--------|
 | `MockPlcFeed` | a seeded simulation | what the demo runs on |
-| `OpcUaSource` | a live **OPC UA** server (subscription, not polling) | tested end to end against a real server |
+| `OpcUaSource` | a live **OPC UA** server (subscription, not polling) | driven end to end against a real OPC UA server in the test suite |
 | `MqttSource` | **MQTT** on the Sparkplug B topic tree | tested over the real client callback path |
 
 ```bash
@@ -194,12 +194,19 @@ Sparkplug's **NDEATH** (the broker publishing an edge node's Last Will when it
 drops off) maps directly onto the `line_silent` alert — the industrial
 standard's own answer to "this line stopped reporting."
 
-What is *not* claimed: none of this has been run against physical PLC hardware,
-and `MqttSource` decodes JSON payloads rather than Sparkplug B's protobuf
-encoding (swap `decode_payload` to add it). What *is* proven, by
-[`tests/test_industrial.py`](tests/test_industrial.py), is that a live OPC UA
-server drives `OpcUaSource` → `StreamRunner` → the unchanged pipeline and emits
-the same `ingest`/`clean`/`transform`/`aggregate` spans everything else reads.
+**What is proven**, by [`tests/test_industrial.py`](tests/test_industrial.py): a
+live OPC UA server drives `OpcUaSource` → `StreamRunner` → the unchanged pipeline
+and emits the same `ingest`/`clean`/`transform`/`aggregate` spans everything else
+reads. The server is a real OPC UA implementation (asyncua) run in-process — the
+protocol is genuine, not stubbed.
+
+**What is not claimed:** this has not been run against physical PLC hardware, and
+`MqttSource` decodes JSON rather than Sparkplug B's protobuf encoding (swap
+`decode_payload` to add it). Commissioning a real line would additionally need
+the plant's tag dictionary mapped into `OpcUaTagMap`, OPC UA certificates for an
+encrypted `SignAndEncrypt` channel (`security_string` — anonymous connections are
+for the local demo server only), and a network path across the OT/IT boundary.
+None of those change a line of pipeline code.
 
 What streaming adds that a finished dataset structurally cannot:
 

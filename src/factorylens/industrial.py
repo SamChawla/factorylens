@@ -201,12 +201,23 @@ class OpcUaSource(_QueueSource):
         *,
         publish_interval_ms: float = 500.0,
         assembler: TagAssembler | None = None,
+        security_string: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
     ) -> None:
         super().__init__()
         self.endpoint = endpoint
         self.tag_maps = tag_maps
         self.publish_interval_ms = publish_interval_ms
         self.assembler = assembler or TagAssembler()
+        # Real plants do not accept anonymous, unencrypted OPC UA. `security_string`
+        # is asyncua's standard form:
+        #   "Basic256Sha256,SignAndEncrypt,client-cert.der,client-key.pem"
+        # Left unset here because the demo server is local and open; set it (and
+        # username/password if the server uses user auth) for any real endpoint.
+        self.security_string = security_string
+        self.username = username
+        self.password = password
         # node id -> (line_id, field name), built once from the tag dictionary.
         self._route: dict[str, tuple[str, str]] = {
             node_id: (tm.line_id, field_name)
@@ -250,7 +261,15 @@ class OpcUaSource(_QueueSource):
                 source._on_change(node.nodeid.to_string(), val, stamp)
 
         try:
-            async with Client(self.endpoint) as client:
+            client = Client(self.endpoint)
+            if self.username:
+                client.set_user(self.username)
+                if self.password:
+                    client.set_password(self.password)
+            if self.security_string:
+                # Certificate-based encryption, as any production endpoint requires.
+                await client.set_security_string(self.security_string)
+            async with client:
                 sub = await client.create_subscription(
                     self.publish_interval_ms, _Handler()
                 )
