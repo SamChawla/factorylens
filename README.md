@@ -173,6 +173,25 @@ protocol.** Three interchangeable implementations of one `SensorSource`:
 uv sync --extra industrial     # asyncua + paho-mqtt; core install stays light
 ```
 
+Pointing it at a real line is a source swap — the pipeline, windows, alerts and
+dashboards below it are untouched:
+
+```python
+from factorylens.industrial import OpcUaSource, OpcUaTagMap
+
+source = OpcUaSource(
+    "opc.tcp://plc-line3.plant.local:4840",
+    [OpcUaTagMap(line_id="line_3", nodes={
+        "ns=2;s=Line3.GoodCount":  "good_count",     # from the plant's tag dictionary
+        "ns=2;s=Line3.TotalCount": "total_count",
+        "ns=2;s=Line3.OvenTemp":   "temperature",
+        "ns=4;s=MES.Line3.BatchId": "batch_id",      # the trigger that cuts a batch
+    })],
+    security_string="Basic256Sha256,SignAndEncrypt,client-cert.der,client-key.pem",
+)
+StreamRunner(telemetry).run(source)     # identical to the demo's mock feed
+```
+
 Two details make these real rather than decorative.
 
 **The timestamps are the protocol's own.** Every OPC UA `DataValue` carries a
