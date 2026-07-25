@@ -4,9 +4,9 @@
 cites the data.**
 
 Manufacturing pipeline health & data-quality observability, instrumented with
-OpenTelemetry and shipped to **SigNoz** (Cloud or self-hosted). Built for the *Agents of SigNoz*
-hackathon (WeMakeDevs × SigNoz, Jul 20–26 2026) — **Track 01: AI & Agent
-Observability**.
+OpenTelemetry and shipped to **self-hosted SigNoz** (Foundry / Docker Compose;
+SigNoz Cloud works identically). Built for the *Agents of SigNoz* hackathon
+(WeMakeDevs × SigNoz, Jul 20–26 2026) — **Track 01: AI & Agent Observability**.
 
 📄 **Overview page:** [`docs/index.html`](docs/index.html) — a one-page visual
 walkthrough of the whole system (open locally, or enable GitHub Pages to serve it).
@@ -84,21 +84,51 @@ cp .env.example .env         # then fill in your keys (.env is gitignored)
 uv run pytest                # 140 tests (8 UI tests skip without SigNoz)
 ```
 
-Minimum config to run against SigNoz Cloud:
+### Stand up SigNoz (self-hosted — the reference deployment)
+
+FactoryLens targets **self-hosted SigNoz**, stood up with
+[Foundry](https://github.com/SigNoz/foundry) on Docker Compose. The spec is
+[`casting.yaml`](casting.yaml) at the repo root, with `casting.yaml.lock` pinning
+the resolved image versions — so the deployment reproduces from this repo alone:
+
+```bash
+curl -fsSL https://signoz.io/foundry.sh | bash   # install foundryctl
+foundryctl cast -f casting.yaml                  # stands up the whole stack
+```
+
+UI on `http://localhost:8080`, OTLP ingest on `:4318`. Then point FactoryLens at
+it — the local collector needs **no ingestion key**:
+
+```bash
+SIGNOZ_OTLP_ENDPOINT=http://localhost:4318
+SIGNOZ_INGESTION_KEY=
+SIGNOZ_SELF_HOSTED=true
+EURI_API_KEY=<primary LLM>     # optional, for `ask`
+GROQ_API_KEY=<fallback LLM>    # optional, for `ask`
+```
+
+Full walkthrough — first-run setup, importing the dashboard and alerts, teardown:
+**[docs/self-hosted.md](docs/self-hosted.md)**.
+
+<details>
+<summary><b>Running against SigNoz Cloud instead</b></summary>
+
+The application code is identical; only the endpoint and auth differ, and both
+come from env. Swap the three variables above for:
 
 ```bash
 SIGNOZ_OTLP_ENDPOINT=https://ingest.<region>.signoz.cloud:443
 SIGNOZ_INGESTION_KEY=<from SigNoz -> Settings -> Ingestion Settings>
-EURI_API_KEY=<primary LLM>
-GROQ_API_KEY=<fallback LLM>
+SIGNOZ_SELF_HOSTED=false
 ```
 
-No SigNoz account? Everything still runs — spans print to the console instead.
+Both targets were used during development and both are covered by tests — the
+export layer reads its endpoint and auth from env precisely so neither is
+special-cased in code.
 
-**Self-hosted SigNoz** (Docker Compose via Foundry) is a first-class target too —
-same code, only three env vars differ. Reproducible-deployment spec is
-[`casting.yaml`](casting.yaml); full walkthrough in
-[docs/self-hosted.md](docs/self-hosted.md).
+</details>
+
+No SigNoz at all? Everything still runs — spans print to the console instead.
 
 **Five OTel signals, not three.** Traces, metrics, **logs** (the structlog stream
 bridged to OTel), a 7-panel **dashboard**, and two **alert rules**
@@ -141,7 +171,7 @@ exactly as before.
 
 Swapping the mock for a real plant means one new class implementing
 `subscribe() -> Iterator[Reading]` on top of OPC UA, MQTT Sparkplug, or an MES
-export. Nothing downstream changes — the protocol is an ``Iterator`` precisely
+export. Nothing downstream changes — the protocol is an `Iterator` precisely
 because that is the shape both a simulator and a real queue-draining client
 already have.
 
@@ -260,7 +290,8 @@ passed / 8 skipped. With SigNoz up and `SIGNOZ_UI_PASSWORD` set, all 140 run.
 ## Stack
 
 Python 3.12 · pandas · OpenTelemetry SDK (traces, metrics, logs over OTLP/HTTP) ·
-SigNoz (Cloud + self-hosted via Foundry / Docker Compose) · Typer + Rich ·
+SigNoz (self-hosted via Foundry / Docker Compose; Cloud also supported) ·
+Typer + Rich ·
 structlog · pydantic-settings · pytest · Playwright · uv
 
 ## AI assistance disclosure

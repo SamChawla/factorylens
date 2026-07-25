@@ -14,7 +14,8 @@ instead. SigNoz turns the dashboards on; it is not required to run anything.
 |------|-----|-------|
 | **Python 3.12+** | `pyproject.toml` requires it | `python --version` |
 | **uv** | env + lockfile | `uv --version` |
-| SigNoz Cloud account | dashboards (optional) | — |
+| **Docker** + Compose | runs self-hosted SigNoz | `docker --version` |
+| SigNoz Cloud account | only if you prefer Cloud over self-hosted | — |
 | An LLM key | the `ask` command (optional) | — |
 
 No uv? `pip install uv`, or see [astral.sh/uv](https://docs.astral.sh/uv/).
@@ -37,17 +38,28 @@ fallback all work. Nothing below can fail for install reasons.
 cp .env.example .env
 ```
 
-Then edit `.env`. **Only two things actually matter**, and both are optional:
+First, stand up SigNoz. The reference deployment is **self-hosted**, via
+[Foundry](https://github.com/SigNoz/foundry) on Docker Compose — reproducible
+from [`casting.yaml`](../casting.yaml) in the repo root:
 
 ```bash
-# --- To see anything in SigNoz ---
-# SigNoz Cloud -> Settings -> Ingestion Settings. Copy BOTH values from there:
-# the region endpoint and the key. The endpoint region must match your account
-# (in2, us, eu...) or spans go nowhere with no error.
-SIGNOZ_OTLP_ENDPOINT=https://ingest.<your-region>.signoz.cloud:443
-SIGNOZ_INGESTION_KEY=<your ingestion key>
+curl -fsSL https://signoz.io/foundry.sh | bash   # install foundryctl
+foundryctl cast -f casting.yaml                  # UI :8080, OTLP :4318
+```
 
-# --- To use the `ask` command ---
+First run pulls several GB. When it's up, open <http://localhost:8080> and create
+the admin account (first-run setup). Full detail, including importing the
+dashboard and alerts: **[self-hosted.md](self-hosted.md)**.
+
+Then edit `.env`:
+
+```bash
+# --- Self-hosted: the local collector needs NO ingestion key ---
+SIGNOZ_OTLP_ENDPOINT=http://localhost:4318
+SIGNOZ_INGESTION_KEY=
+SIGNOZ_SELF_HOSTED=true
+
+# --- To use the `ask` command (optional) ---
 # Either one is enough; with both, Euri is primary and Groq is the fallback.
 EURI_API_KEY=<your euri key>
 GROQ_API_KEY=<your groq key>
@@ -56,9 +68,11 @@ GROQ_API_KEY=<your groq key>
 Leave the rest at their defaults — the base URLs and model IDs are the values
 verified live against each provider.
 
-> **Running FactoryLens needs only the *ingestion* key.** The dashboard and
-> alerts are imported by hand (one click) or pushed with a management API key —
-> neither is required to run anything.
+> **Prefer SigNoz Cloud?** Same code, different endpoint. Use
+> `SIGNOZ_OTLP_ENDPOINT=https://ingest.<region>.signoz.cloud:443` with your
+> ingestion key (Settings → Ingestion) and `SIGNOZ_SELF_HOSTED=false`. The region
+> must match your account — `ingest.us…` with an `in2` account accepts the
+> request and silently discards it.
 
 ## 4. Verify telemetry before trusting anything
 
@@ -69,11 +83,11 @@ uv run factorylens check
 Expected:
 
 ```
-Sent factorylens_healthcheck span to https://ingest.in2.signoz.cloud:443
+Sent factorylens_healthcheck span to http://localhost:4318
 flush acknowledged: True
 ```
 
-Now open SigNoz → **Traces**, filter `service = factorylens`, and confirm the
+Now open <http://localhost:8080> → **Traces**, filter `service = factorylens`, and confirm the
 span landed. Do this *first* — if it fails, nothing downstream will show data
 and you will waste time debugging the wrong layer.
 
