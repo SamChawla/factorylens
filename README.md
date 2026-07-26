@@ -49,13 +49,55 @@ So the engineer ends up asking: *is my line actually broken, or is my data?*
 FactoryLens instruments **every pipeline stage as an OpenTelemetry span** that
 carries the data-quality facts alongside the business metric:
 
+```bash
+                    FACTORYLENS
+
+ ┌─────────────────────────────────────────────┐
+ │          Manufacturing Telemetry            │
+ │                                             │
+ │   Mock PLC       OPC UA        MQTT         │
+ └──────────────────────┬──────────────────────┘
+                        │
+                        ▼
+ ┌─────────────────────────────────────────────┐
+ │            FactoryLens Pipeline             │
+ │                                             │
+ │  INGEST → CLEAN → TRANSFORM → AGGREGATE    │
+ │                                             │
+ │  OEE • Availability • Performance • Quality│
+ │  Dropped Rows • Null Ratio • Stale Batches │
+ └──────────────────────┬──────────────────────┘
+                        │
+                  OpenTelemetry
+                        │
+                        ▼
+ ┌─────────────────────────────────────────────┐
+ │                    SigNoz                   │
+ │                                             │
+ │    Traces       Metrics        Logs         │
+ │       │            │            │           │
+ │       └────────────┼────────────┘           │
+ │                    ▼                        │
+ │          Dashboards + Alerts               │
+ └──────────────────────┬──────────────────────┘
+                        │
+                        ▼
+ ┌─────────────────────────────────────────────┐
+ │          Telemetry Q&A Agent                │
+ │                                             │
+ │  "Why is line_3's OEE lower?"              │
+ │                       │                     │
+ │                       ▼                     │
+ │     Evidence-grounded explanation          │
+ └──────────────────────┬──────────────────────┘
+                        │
+                  OpenTelemetry
+                        │
+                        ▼
+              SigNoz — LLM Observability
+          Latency • Tokens • Provider • Fallback
 ```
-pipeline_run (line_id)
-├── ingest      rows_in, rows_out, rows_dropped, null_ratio, stale_batch
-├── clean       ← malformed rows dropped here, quality measured here
-├── transform
-└── aggregate   + availability, performance, quality, oee
-```
+
 
 Those spans go to SigNoz, where seven panels show pipeline duration, data-quality
 trend, and OEE per line. Then a **Q&A agent reads the same spans** and answers in
